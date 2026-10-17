@@ -2,7 +2,6 @@
 import logging
 from datetime import datetime, timedelta
 
-# import pytz
 import requests
 import xmltodict
 from vincenty import vincenty
@@ -110,15 +109,6 @@ def __to_float1(val):
     """Convert val into float with 1 decimal."""
     return __to_float(val, 1)
 
-
-def old__to_localdatetime(val):
-    """Convert val into a local datetime for tz Europe/Amsterdam."""
-    try:
-        dt = datetime.strptime(val, __DATE_FORMAT)
-        dt = __PYTZ_TIMEZONE.localize(dt)
-        return dt
-    except (ValueError, TypeError):
-        return None
 
 def __to_localdatetime(val: str | None) -> datetime | None:
     """
