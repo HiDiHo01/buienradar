@@ -1,6 +1,7 @@
 """Buienradar library to get parsed weather data from buienradar.nl."""
 import json
 import logging
+import math
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -644,9 +645,6 @@ def __select_nearest_ws(jsondata, latitude, longitude):
     """Select the nearest weatherstation."""
     log.debug("__select_nearest_ws: latitude: %s, longitude: %s",
               latitude, longitude)
-    dist = 0
-    dist2 = 0
-    loc_data = None
 
     try:
         ws_json = jsondata[__ACTUAL]
@@ -657,11 +655,38 @@ def __select_nearest_ws(jsondata, latitude, longitude):
                     __STATIONMEASUREMENTS)
         return None
 
-    for wstation in ws_json:
-        dist2 = __get_ws_distance(wstation, latitude, longitude)
+    # Performance optimization:
+    # `vincenty` distance calculation is computationally expensive.
+    # Pre-filter stations using fast equirectangular distance approximation
+    # to select top candidate stations before running exact geodesic vincenty.
+    cos_lat = math.cos(math.radians(latitude))
+    candidates = []
 
+    for wstation in ws_json:
+        try:
+            wslat = float(wstation[__LAT])
+            wslon = float(wstation[__LON])
+            dy = wslat - latitude
+            dx = (wslon - longitude) * cos_lat
+            approx_sq = dx * dx + dy * dy
+            candidates.append((approx_sq, wstation))
+        except (ValueError, TypeError, KeyError):
+            continue
+
+    if not candidates:
+        log.warning("No weatherstation selected; aborting...")
+        return None
+
+    candidates.sort(key=lambda item: item[0])
+
+    dist = None
+    loc_data = None
+
+    # Evaluate exact vincenty distance on top 3 candidate stations
+    for _, wstation in candidates[:3]:
+        dist2 = __get_ws_distance(wstation, latitude, longitude)
         if dist2 is not None:
-            if ((loc_data is None) or (dist2 < dist)):
+            if loc_data is None or dist2 < dist:
                 dist = dist2
                 loc_data = wstation
 
