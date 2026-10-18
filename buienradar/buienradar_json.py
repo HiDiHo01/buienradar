@@ -449,10 +449,29 @@ def __parse_loc_data(loc_data, result):
     return result
 
 
+_WIND_SPEEDS = {
+    0: 0.25, 1: 0.51, 2: 2.06, 3: 3.6, 4: 5.66,
+    5: 8.23, 6: 11.32, 7: 14.4, 8: 17.49, 9: 21.09,
+    10: 24.69, 11: 28.81, 12: 32.41,
+}
+
+_WIND_DIRECTIONS = {
+    'N': 0, 'NNO': 22.5, 'NO': 45, 'ONO': 67.5, 'O': 90,
+    'OZO': 112.5, 'ZO': 135, 'ZZO': 157.5, 'Z': 180,
+    'ZZW': 202.5, 'ZW': 225, 'WZW': 247.5, 'W': 270,
+    'WNW': 292.5, 'NW': 315, 'NNW': 237.5,
+    'NNE': 22.5, 'NE': 45, 'ENE': 67.5, 'E': 90,
+    'ESE': 112.5, 'SE': 135, 'SSE': 157.5, 'S': 180,
+    'SSW': 202.5, 'SW': 225, 'WSW': 247.5,
+}
+
+
 def __parse_fc_data(fc_data):
     """Parse the forecast data from the json section."""
     fc = []
     for day in fc_data:
+        wind_str = __get_str(day, __WINDDIRECTION)
+        wind_force = __get_int(day, __WIND)
         fcdata = {
             # CONDITION: __cond_from_desc(
             #    __get_str(
@@ -475,31 +494,28 @@ def __parse_fc_data(fc_data):
             MAX_RAIN: __get_float(day, __MMRAINMAX),  # new
             # depricated / for compatibility:
             SNOW: 0,
-            WINDFORCE: __get_int(day, __WIND),
+            WINDFORCE: wind_force,
             # new: est. windspeed (m/s) from windforce (Bft):
-            WINDSPEED: __get_windspeed(__get_int(day, __WIND)),
+            WINDSPEED: __get_windspeed(wind_force),
             # new: ONO/NW:
-            WINDDIRECTION: __get_str(day, __WINDDIRECTION).upper(),
+            WINDDIRECTION: wind_str.upper(),
             # new; estimated windazimuth using __WINDDIRECTION:
-            WINDAZIMUTH: __get_windazimuth(__get_str(day, __WINDDIRECTION)),
+            WINDAZIMUTH: __get_windazimuth(wind_str),
             DATETIME: __to_localdatetime(__get_str(day, __DAY)),
         }
         # fc never is about nighttime:
-        fcdata[CONDITION][NIGHTTIME] = False
-        fcdata[CONDITION][IMAGE] = day[__ICONURL]
+        if fcdata[CONDITION]:
+            fcdata[CONDITION][NIGHTTIME] = False
+            fcdata[CONDITION][IMAGE] = day[__ICONURL]
 
         fc.append(fcdata)
     return fc
 
 
 def __get_windspeed(windforce):
-    speeds = {0: 0.25, 1: 0.51, 2: 2.06, 3: 3.6, 4: 5.66,
-              5: 8.23, 6: 11.32, 7: 14.4, 8: 17.49, 9: 21.09,
-              10: 24.69, 11: 28.81, 12: 32.41}
-
     try:
-        return speeds[windforce]
-    except:     # noqa E722
+        return _WIND_SPEEDS[windforce]
+    except (KeyError, TypeError):
         return None
 
 
@@ -508,17 +524,9 @@ def __get_windazimuth(winddirection):
     if not winddirection:
         return None
 
-    dirs = {'N': 0, 'NNO': 22.5, 'NO': 45, 'ONO': 67.5, 'O': 90,
-            'OZO': 112.5, 'ZO': 135, 'ZZO': 157.5, 'Z': 180,
-            'ZZW': 202.5, 'ZW': 225, 'WZW': 247.5, 'W': 270,
-            'WNW': 292.5, 'NW': 315, 'NNW': 237.5,
-            'NNE': 22.5, 'NE': 45, 'ENE': 67.5, 'E': 90,
-            'ESE': 112.5, 'SE': 135, 'SSE': 157.5, 'S': 180,
-            'SSW': 202.5, 'SW': 225, 'WSW': 247.5
-            }
     try:
-        return dirs[winddirection.upper()]
-    except:     # noqa E722
+        return _WIND_DIRECTIONS[winddirection.upper()]
+    except (KeyError, AttributeError, TypeError):
         return None
 
 
@@ -733,16 +741,14 @@ def __get_ws_distance(wstation, latitude, longitude):
 
 def __is_valid(loc_data):
     """Determine if this can be valid data (not all 0's)."""
-    # return True
     for key, [value, func] in SENSOR_TYPES.items():
-        if (key != CONDITION and key != STATIONNAME and key != MEASURED):
-            if (func is not None):
+        if key != CONDITION and key != STATIONNAME and key != MEASURED:
+            if func is not None:
                 sens_data = loc_data.get(value)
-                if (sens_data is not None and                        # noqa ignore W504
-                        func(sens_data) is not None and                  # noqa ignore W504
-                        func(sens_data) != 0 and                         # noqa ignore W504
-                        func(sens_data) != ""):
-                    return True
+                if sens_data is not None:
+                    val = func(sens_data)
+                    if val is not None and val != 0 and val != "":
+                        return True
 
 
 def __getStationName(name, id):
