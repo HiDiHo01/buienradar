@@ -70,6 +70,10 @@ __DATE_FORMAT = '%Y-%m-%dT%H:%M:%S'
 __TIMEZONE = 'Europe/Amsterdam'
 __ZI_TIMEZONE = ZoneInfo(__TIMEZONE)
 
+# Precomputed lookup table for precipitation intensity 10**((val-109)/32)
+# for standard integer values in range 0..255.
+_MMU_LOOKUP = [10 ** ((val - 109) / 32) for val in range(256)]
+
 __ACTUAL = "actual"
 __STATIONMEASUREMENTS = "stationmeasurements"
 __LAT = "lat"
@@ -578,18 +582,19 @@ def __parse_precipfc_data(data, timeframe):
 
     log.debug("Precipitation data: %s", data)
     lines = data.splitlines()
-    index = 1
-    totalrain = 0
+    totalrain = 0.0
     numberoflines = 0
     nrlines = min(len(lines), round(float(timeframe) / 5) + 1)
     # looping through lines of forecasted precipitation data and
     # not using the time data (HH:MM) int the data. This is to allow for
     # correct data in case we are running in a different timezone.
-    while index < nrlines:
+    # Performance optimization:
+    # Use precomputed lookup table `_MMU_LOOKUP` for integer values 0..255
+    # (formula: 10**((val-109)/32)) to avoid expensive exponentiation per line.
+    for index in range(1, nrlines):
         line = lines[index]
         log.debug("__parse_precipfc_data: line: %s", line)
-        # pylint: disable=unused-variable
-        (val, key) = line.split("|")
+        val_str, _ = line.split("|", 1)
         # See buienradar documentation for this api, attribution
         # https://www.buienradar.nl/overbuienradar/gratis-weerdata
         #
@@ -605,11 +610,18 @@ def __parse_precipfc_data(data, timeframe):
         #
         # Ter controle: een waarde van 77 is gelijk aan een neerslagintensiteit
         # van 0,1 mm/u.
-        val = float(val.replace(',', '.'))
-        mmu = 10**((val - 109) / 32)
-        totalrain = totalrain + float(mmu)
-        numberoflines = numberoflines + 1
-        index += 1
+        try:
+            val_int = int(val_str)
+            if 0 <= val_int <= 255:
+                mmu = _MMU_LOOKUP[val_int]
+            else:
+                mmu = 10 ** ((val_int - 109) / 32)
+        except ValueError:
+            val_float = float(val_str.replace(',', '.'))
+            mmu = 10 ** ((val_float - 109) / 32)
+
+        totalrain += mmu
+        numberoflines += 1
 
     if numberoflines > 0:
         result[AVERAGE] = round((totalrain / numberoflines), 2)
