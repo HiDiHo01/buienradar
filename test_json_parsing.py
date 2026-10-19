@@ -126,3 +126,14 @@ def test_full_parse_json_data():
     assert res["data"]["temperature"] == 15.4
     assert res["data"]["stationname"] == "De Bilt (6260)"
     assert len(res["data"]["forecast"]) == 1
+
+
+def test_malformed_rain_payload_rows():
+    """Test skipping malformed rows with extra or missing fields."""
+    from buienradar.buienradar_json import __parse_precipfc_data as parse_precip
+
+    payload = "header\n077|12:00\n077|12:05|unexpected\n000|12:10\n"
+    res = parse_precip(payload, 15)
+    # Header skipped (index 0). Index 1 (077|12:00) valid. Index 2 (malformed) skipped. Index 3 (000|12:10) valid.
+    # Total valid rows = 2
+    assert res["average"] == 0.05
