@@ -336,7 +336,11 @@ def __parse_precipfc_data(data, timeframe) -> dict[str, object]:
     for index in range(1, nrlines):
         line = lines[index]
         log.debug("__parse_precipfc_data: line: %s", line)
-        val_str, _ = line.split("|", 1)
+        parts = line.split("|")
+        if len(parts) != 2:
+            log.warning("Skipping malformed precipitation line: %s", line)
+            continue
+        val_str = parts[0]
         # See buienradar documentation for this api, attribution
         # https://www.buienradar.nl/overbuienradar/gratis-weerdata
         #
