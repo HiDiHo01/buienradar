@@ -338,7 +338,7 @@ def __parse_precipfc_data(data, timeframe) -> dict[str, object]:
         log.debug("__parse_precipfc_data: line: %s", line)
         parts = line.split("|")
         if len(parts) != 2:
-            log.warning("Skipping malformed precipitation line: %s", line)
+            log.warning("Skipping malformed precipitation line: %r", line)
             continue
         val_str = parts[0]
         # See buienradar documentation for this api, attribution
@@ -363,8 +363,12 @@ def __parse_precipfc_data(data, timeframe) -> dict[str, object]:
             else:
                 mmu = 10 ** ((val_int - 109) / 32)
         except ValueError:
-            val_float = float(val_str.replace(',', '.'))
-            mmu = 10 ** ((val_float - 109) / 32)
+            try:
+                val_float = float(val_str.replace(',', '.'))
+                mmu = 10 ** ((val_float - 109) / 32)
+            except ValueError:
+                log.warning("Skipping invalid numeric precipitation value: %r", line)
+                continue
 
         totalrain += mmu
         numberoflines += 1
