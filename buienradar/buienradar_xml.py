@@ -285,8 +285,8 @@ def __parse_ws_data(content, latitude=52.091579, longitude=5.119734):
         log.exception(result[MESSAGE])
         return result
 
-    # select the nearest weather station
-    loc_data = __select_nearest_ws(xmldata, latitude, longitude)
+    # select the nearest weather station and its exact distance
+    loc_data, dist = __select_nearest_ws(xmldata, latitude, longitude)
     # process current weather data from selected weatherstation
     if not loc_data:
         result[MESSAGE] = 'No location selected.'
@@ -296,9 +296,9 @@ def __parse_ws_data(content, latitude=52.091579, longitude=5.119734):
         result[MESSAGE] = 'Location data is invalid.'
         return result
 
-    # add distance to weatherstation
+    # add distance to weatherstation (reuse dist calculated in __select_nearest_ws)
     log.debug("Raw location data: %s", loc_data)
-    result[DISTANCE] = __get_ws_distance(loc_data, latitude, longitude)
+    result[DISTANCE] = dist
     result = __parse_loc_data(loc_data, result)
 
     # extract weather forecast
@@ -519,7 +519,7 @@ def __select_nearest_ws(xmldata, latitude, longitude):
         log.warning("Missing section in Buienradar xmldata (%s)."
                     "Can happen 00:00-01:00 CE(S)T",
                     __BRWEERSTATION)
-        return None
+        return None, None
 
     # Performance optimization:
     # `vincenty` distance calculation is computationally expensive.
@@ -541,7 +541,7 @@ def __select_nearest_ws(xmldata, latitude, longitude):
 
     if not candidates:
         log.warning("No weatherstation selected; aborting...")
-        return None
+        return None, None
 
     candidates.sort(key=lambda item: item[0])
 
@@ -558,7 +558,7 @@ def __select_nearest_ws(xmldata, latitude, longitude):
 
     if loc_data is None:
         log.warning("No weatherstation selected; aborting...")
-        return None
+        return None, None
     else:
         try:
             log.debug("Selected weatherstation: code='%s', "
@@ -569,4 +569,4 @@ def __select_nearest_ws(xmldata, latitude, longitude):
                       loc_data[__BRLON])
         except KeyError:
             log.debug("Selected weatherstation")
-        return loc_data
+        return loc_data, dist
