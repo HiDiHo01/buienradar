@@ -38,19 +38,22 @@ def test_json_nearest_ws_selection():
     }
 
     # Location near De Bilt (52.09, 5.12)
-    selected = json_select_nearest(jsondata, 52.09, 5.12)
+    selected, dist = json_select_nearest(jsondata, 52.09, 5.12)
     assert selected is not None
+    assert dist is not None
+    assert dist > 0
     assert selected["stationid"] == 6260
     assert selected["stationname"] == "De Bilt"
 
     # Location near Maastricht (50.90, 5.75)
-    selected_m = json_select_nearest(jsondata, 50.90, 5.75)
+    selected_m, dist_m = json_select_nearest(jsondata, 50.90, 5.75)
     assert selected_m is not None
+    assert dist_m is not None
     assert selected_m["stationid"] == 6380
 
     # Test empty / invalid payloads
-    assert json_select_nearest({}, 52.0, 5.0) is None
-    assert json_select_nearest({"actual": {}}, 52.0, 5.0) is None
+    assert json_select_nearest({}, 52.0, 5.0) == (None, None)
+    assert json_select_nearest({"actual": {}}, 52.0, 5.0) == (None, None)
 
 
 def test_xml_nearest_ws_selection():
@@ -85,14 +88,17 @@ def test_xml_nearest_ws_selection():
     }
 
     # Location near De Bilt (52.09, 5.12)
-    selected = xml_select_nearest(xmldata, 52.09, 5.12)
+    selected, dist = xml_select_nearest(xmldata, 52.09, 5.12)
     assert selected is not None
+    assert dist is not None
+    assert dist > 0
     assert selected["stationcode"] == "6260"
 
     # Location near Schiphol (52.30, 4.80)
-    selected_s = xml_select_nearest(xmldata, 52.30, 4.80)
+    selected_s, dist_s = xml_select_nearest(xmldata, 52.30, 4.80)
     assert selected_s is not None
+    assert dist_s is not None
     assert selected_s["stationcode"] == "6240"
 
     # Test empty / invalid payloads
-    assert xml_select_nearest({}, 52.0, 5.0) is None
+    assert xml_select_nearest({}, 52.0, 5.0) == (None, None)

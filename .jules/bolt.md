@@ -9,3 +9,7 @@
 ## 2026-10-19 - Lookup Table for Precipitation Intensity Exponentiation
 **Learning:** Buienradar's precipitation text API returns values as integer strings from 0 to 255. Standard float parsing and floating-point exponentiation `10**((val-109)/32)` for every line (~25 lines per request) incurs unnecessary computation overhead. Pre-calculating a 256-element lookup table `_MMU_LOOKUP` and performing `int(val_str)` lookup avoids float parsing and exponentiation, speeding up forecast parsing by ~15%.
 **Action:** When parsing bounded integer range domain formulas (such as 0..255 sensor/forecast values), use precalculated lookup tables instead of evaluating exponential equations per line.
+
+## 2026-10-20 - Returning Calculated Distance from Station Selection
+**Learning:** `__select_nearest_ws` evaluates the exact geodesic distance (`dist`) for top candidate stations using `vincenty`. Previously, it only returned `loc_data`, forcing `__parse_ws_data` to immediately re-calculate `vincenty` distance on `loc_data`. Returning `(loc_data, dist)` from `__select_nearest_ws` allows `__parse_ws_data` to reuse `dist` directly, eliminating 1 out of 4 expensive `vincenty` distance computations per request.
+**Action:** When selecting an optimal entity from candidates via an expensive metric, return the pre-calculated metric along with the selected entity to avoid redundant recalculation.
