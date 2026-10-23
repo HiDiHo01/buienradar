@@ -399,10 +399,11 @@ def __parse_loc_data(loc_data, result):
                     FORECAST: [],
                     PRECIPITATION_FORECAST: None}
 
+    from buienradar.buienradar import condition_from_code
+
     for key, [value, func] in SENSOR_TYPES.items():
         result[DATA][key] = None
         try:
-            from buienradar.buienradar import condition_from_code
             sens_data = loc_data[value]
             if key == CONDITION:
                 # update weather symbol & status text
@@ -436,17 +437,16 @@ def __parse_fc_data(fc_data):
     """Parse the forecast data from the xml section."""
     from buienradar.buienradar import condition_from_code
     fc = []
+    base_dt = datetime.now(__ZI_TIMEZONE).replace(hour=12,
+                                                  minute=0,
+                                                  second=0,
+                                                  microsecond=0)
     for daycnt in range(1, 6):
         daysection = __BRDAYFC % daycnt
         if daysection in fc_data:
             tmpsect = fc_data[daysection]
-            fcdatetime = datetime.now(__ZI_TIMEZONE)
-            fcdatetime = fcdatetime.replace(hour=12,
-                                            minute=0,
-                                            second=0,
-                                            microsecond=0)
             # add daycnt days
-            fcdatetime = fcdatetime + timedelta(days=daycnt)
+            fcdatetime = base_dt + timedelta(days=daycnt)
             code = tmpsect.get(__BRICOON, []).get(__BRID).lower()
             fcdata = {
                 CONDITION: condition_from_code(code),
@@ -460,7 +460,8 @@ def __parse_fc_data(fc_data):
                 WINDFORCE: __get_int(tmpsect, __BRWINDKRACHT),
                 DATETIME: fcdatetime,
             }
-            fcdata[CONDITION][IMAGE] = tmpsect.get(__BRICOON, []).get(__BRTEXT)
+            if fcdata[CONDITION]:
+                fcdata[CONDITION][IMAGE] = tmpsect.get(__BRICOON, []).get(__BRTEXT)
 
             fc.append(fcdata)
     return fc

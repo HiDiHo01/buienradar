@@ -473,20 +473,21 @@ _WIND_DIRECTIONS = {
 def __parse_fc_data(fc_data):
     """Parse the forecast data from the json section."""
     fc = []
+    # Performance optimization: extract wind direction, icon URL, and wind force once per day
+    # to avoid redundant string upper() conversions and repeated dictionary lookups.
     for day in fc_data:
         wind_str = __get_str(day, __WINDDIRECTION)
+        wind_dir_upper = wind_str.upper()
         wind_force = __get_int(day, __WIND)
+        icon_url = __get_str(day, __ICONURL)
+
+        cond = __cond_from_image(icon_url)
+        if cond:
+            cond[NIGHTTIME] = False
+            cond[IMAGE] = icon_url
+
         fcdata = {
-            # CONDITION: __cond_from_desc(
-            #    __get_str(
-            #        day,
-            #        __WEATHERDESCRIPTION)
-            # ),
-            CONDITION: __cond_from_image(
-                __get_str(
-                    day,
-                    __ICONURL)
-            ),
+            CONDITION: cond,
             TEMPERATURE: __get_avr_float(day, __MAXTEMPERATUREMIN,
                                          __MAXTEMPERATUREMAX),
             MIN_TEMP: __get_float(day, __MINTEMPERATUREMIN),
@@ -502,15 +503,11 @@ def __parse_fc_data(fc_data):
             # new: est. windspeed (m/s) from windforce (Bft):
             WINDSPEED: __get_windspeed(wind_force),
             # new: ONO/NW:
-            WINDDIRECTION: wind_str.upper(),
+            WINDDIRECTION: wind_dir_upper,
             # new; estimated windazimuth using __WINDDIRECTION:
-            WINDAZIMUTH: __get_windazimuth(wind_str),
+            WINDAZIMUTH: __get_windazimuth(wind_dir_upper),
             DATETIME: __to_localdatetime(__get_str(day, __DAY)),
         }
-        # fc never is about nighttime:
-        if fcdata[CONDITION]:
-            fcdata[CONDITION][NIGHTTIME] = False
-            fcdata[CONDITION][IMAGE] = day[__ICONURL]
 
         fc.append(fcdata)
     return fc
