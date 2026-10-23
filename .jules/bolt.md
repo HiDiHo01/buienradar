@@ -13,3 +13,7 @@
 ## 2026-10-20 - Returning Calculated Distance from Station Selection
 **Learning:** `__select_nearest_ws` evaluates the exact geodesic distance (`dist`) for top candidate stations using `vincenty`. Previously, it only returned `loc_data`, forcing `__parse_ws_data` to immediately re-calculate `vincenty` distance on `loc_data`. Returning `(loc_data, dist)` from `__select_nearest_ws` allows `__parse_ws_data` to reuse `dist` directly, eliminating 1 out of 4 expensive `vincenty` distance computations per request.
 **Action:** When selecting an optimal entity from candidates via an expensive metric, return the pre-calculated metric along with the selected entity to avoid redundant recalculation.
+
+## 2026-10-21 - Avoiding Redundant Local Imports and Loop Computations
+**Learning:** Placing `from buienradar.buienradar import condition_from_code` inside the `SENSOR_TYPES` loop in `__parse_loc_data` resulted in 15 repeated import lookups per parsed station. Hoisting local imports and loop invariant calculations (like `datetime.now()` in XML forecast parsing or `wind_str.upper()`) outside loops reduces overhead cleanly without any functional risk or type conversion side-effects.
+**Action:** Always check loop bodies for local `import` statements or loop-invariant computations, and hoist them to function or module scope.
