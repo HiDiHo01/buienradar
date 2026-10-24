@@ -25,6 +25,14 @@ These instructions apply to the entire `buienradar` repository.
 - Report checks as passed, failed, or not run. Never claim that a command, test, or workflow ran unless it actually did.
 - Do not use live Buienradar endpoints as a required test dependency when deterministic mocks or fixtures can verify the behavior.
 
+### Local test commands and CI
+- Install the test environment with `python -m pip install -r requirements_test.txt`, then verify it with `python -m pip check`. This dependency file is for tests; it does not define the library's runtime support policy.
+- Run the complete suite with `python -m pytest --strict-config --strict-markers --import-mode=importlib -ra test_json_parsing.py tests/`. Both locations contain tests. Importlib mode prevents the two files named `test_json_parsing.py` from colliding during collection.
+- `.github/workflows/tests.yml` runs this command on Python 3.12, 3.13, and 3.14 on Linux and Windows for pull requests, pushes to `main`, and manual runs. The matrix records CI coverage rather than declaring a minimum supported Python version.
+- Keep the `tzdata` test dependency: Windows needs it to resolve `Europe/Amsterdam` through `zoneinfo`.
+- Validate workflow changes with `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color` using Go 1.25 or newer. `.github/workflows/validate-workflows.yml` runs the same validation in CI with Go 1.26.
+- Pin external GitHub Actions to full commit SHAs with version comments. Keep workflow token permissions at `contents: read`, disable persisted checkout credentials, and use `pull_request` rather than `pull_request_target` for running contributed code.
+
 ## Pull requests and reviews
 - Prioritize correctness, regressions, security, data integrity, network behavior, dependency compatibility, and public API stability.
 - Report actionable review findings with severity, file/line, failure scenario, impact, and a concrete fix. Do not present speculation or style preferences as defects.
