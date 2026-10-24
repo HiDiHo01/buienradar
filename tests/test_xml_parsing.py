@@ -1,8 +1,14 @@
-"""Regression tests for conditions in the public XML parsing workflow."""
+"""Tests for XML timestamp parsing and forecast conditions."""
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from buienradar.buienradar import parse_data
+from buienradar.buienradar_xml import __to_localdatetime as to_localdatetime
+
+__ZI_TIMEZONE = ZoneInfo("Europe/Amsterdam")
 
 
 @pytest.mark.parametrize(
@@ -93,3 +99,22 @@ def test_parse_xml_forecast_conditions(
     assert forecast_entries[1]["maxtemp"] == 18.0
     assert forecast_entries[1]["condition"]["condcode"] == "b"
     assert forecast_entries[1]["condition"]["image"] == "https://example.invalid/b.png"
+
+
+def test_xml_to_localdatetime() -> None:
+    """Test XML timestamp parsing fast-path and fallbacks."""
+    # Fast path standard MM/DD/YYYY HH:MM:SS format
+    parsed_datetime = to_localdatetime("05/11/2023 12:30:45")
+    expected_datetime = datetime(2023, 5, 11, 12, 30, 45, tzinfo=__ZI_TIMEZONE)
+    assert parsed_datetime == expected_datetime
+
+    # A valid single-digit month uses the strptime fallback.
+    assert to_localdatetime("5/11/2023 12:30:45") == expected_datetime
+
+    # Invalid digit range (e.g. month 99) triggers ValueError -> strptime fallback -> returns None
+    assert to_localdatetime("99/11/2023 12:30:45") is None
+
+    # Non-string or empty inputs
+    assert to_localdatetime(None) is None
+    assert to_localdatetime("") is None
+    assert to_localdatetime("invalid") is None
