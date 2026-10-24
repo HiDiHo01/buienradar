@@ -20,6 +20,8 @@ Contributions to `buienradar` are welcome. Keep changes focused, tested, and com
 ## Tests and checks
 Inspect the repository's current test and CI configuration and run the relevant checks before submitting a pull request. Add regression tests for bug fixes and tests for new behavior. Do not claim a check passed unless it was actually executed. If a check cannot be run, explain why in the pull request.
 
+The unified CI workflow checks critical Python errors, workflow security, dependency vulnerabilities, and the complete test suite on Linux and Windows with Python 3.12–3.14. It retains diagnostic reports, combines branch coverage, and requires at least 59% coverage. See `AGENTS.md` for the exact local commands and the measured baseline. The `CI result` check succeeds only after every required job succeeds.
+
 ## Pull requests
 Include:
 - A concise summary of the problem and the proposed solution.
