@@ -172,8 +172,18 @@ def condition_from_code(condcode: int | str) -> ConditionData | None:
     if not isinstance(condcode, (int, str)):
         raise TypeError("Condition code must be an integer or string")
 
-    code_key = str(condcode).lower()
+    if isinstance(condcode, int):
+        try:
+            code_key = chr(condcode).lower()
+        except (ValueError, OverflowError):
+            code_key = ""
+    else:
+        code_key = str(condcode).lower()
+
     cond = _CONDITION_DATA_CACHE.get(code_key)
+    if cond is None and isinstance(condcode, int):
+        cond = _CONDITION_DATA_CACHE.get(str(condcode))
+
     if cond is None:
         return None
 
