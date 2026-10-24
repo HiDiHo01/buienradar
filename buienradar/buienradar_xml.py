@@ -401,8 +401,6 @@ def __parse_loc_data(loc_data, result):
                     FORECAST: [],
                     PRECIPITATION_FORECAST: None}
 
-    from buienradar.buienradar import condition_from_code
-
     for key, [value, func] in SENSOR_TYPES.items():
         result[DATA][key] = None
         try:
