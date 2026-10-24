@@ -126,3 +126,22 @@ def test_full_parse_json_data():
     assert res["data"]["temperature"] == 15.4
     assert res["data"]["stationname"] == "De Bilt (6260)"
     assert len(res["data"]["forecast"]) == 1
+
+
+def test_condition_from_code():
+    """Test condition lookup with string and integer codes."""
+    from buienradar.buienradar import condition_from_code
+
+    res_str = condition_from_code("a")
+    assert res_str is not None
+    assert res_str["condition"] == "clear"
+
+    res_str_upper = condition_from_code("A")
+    assert res_str_upper is not None
+    assert res_str_upper["condition"] == "clear"
+
+    res_invalid = condition_from_code("nonexistent")
+    assert res_invalid is None
+
+    with pytest.raises(TypeError):
+        condition_from_code(None)

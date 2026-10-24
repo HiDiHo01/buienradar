@@ -395,6 +395,8 @@ def __is_valid(loc_data):
 
 def __parse_loc_data(loc_data, result):
     """Parse the xml data from selected weatherstation."""
+    from buienradar.buienradar import condition_from_code
+
     result[DATA] = {ATTRIBUTION: ATTRIBUTION_INFO,
                     FORECAST: [],
                     PRECIPITATION_FORECAST: None}
