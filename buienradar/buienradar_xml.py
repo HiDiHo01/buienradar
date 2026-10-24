@@ -460,7 +460,7 @@ def __parse_fc_data(fc_data):
                 WINDFORCE: __get_int(tmpsect, __BRWINDKRACHT),
                 DATETIME: fcdatetime,
             }
-            if fcdata[CONDITION]:
+            if fcdata[CONDITION] is not None:
                 fcdata[CONDITION][IMAGE] = tmpsect.get(__BRICOON, []).get(__BRTEXT)
 
             fc.append(fcdata)
