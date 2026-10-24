@@ -33,11 +33,25 @@ _DEFAULT_TIMEFRAME: int = 60
 class ConditionData(TypedDict):
     """Structured representation of condition metadata."""
 
-    condcode: int
+    condcode: int | str
     condition: str
     detailed: str
     exact: str
     exactnl: str
+
+
+# Precomputed condition data templates for fast O(1) lookups
+_CONDITION_DATA_CACHE: dict[str, ConditionData] = {
+    str(code).lower(): ConditionData(
+        condcode=code,
+        condition=val[0],
+        detailed=val[1],
+        exact=val[2],
+        exactnl=val[3],
+    )
+    for code, val in __BRCONDITIONS.items()
+    if isinstance(val, (list, tuple)) and len(val) >= 4
+}
 
 
 def _validate_coordinates(latitude: float, longitude: float) -> None:
@@ -145,31 +159,24 @@ def parse_data(
     )
 
 
-def condition_from_code(condcode: int) -> ConditionData | None:
+def condition_from_code(condcode: int | str) -> ConditionData | None:
     """
     Retrieve condition metadata from a Buienradar condition code.
 
     Args:
-        condcode: Numeric condition code.
+        condcode: Numeric or string condition code.
 
     Returns:
         ConditionData dictionary if known, otherwise None.
     """
-    if not isinstance(condcode, int):
-        raise TypeError("Condition code must be an integer")
+    if not isinstance(condcode, (int, str)):
+        raise TypeError("Condition code must be an integer or string")
 
-    cond_data = __BRCONDITIONS.get(condcode)
-    if cond_data is None:
+    code_key = str(condcode).lower()
+    cond = _CONDITION_DATA_CACHE.get(code_key)
+    if cond is None:
         return None
 
-    if not isinstance(cond_data, (list, tuple)) or len(cond_data) < 4:
-        log.warning("Malformed condition mapping for code %s", condcode)
-        return None
-
-    return ConditionData(
-        condcode=condcode,
-        condition=cond_data[0],
-        detailed=cond_data[1],
-        exact=cond_data[2],
-        exactnl=cond_data[3],
-    )
+    res = cond.copy()
+    res["condcode"] = condcode
+    return res

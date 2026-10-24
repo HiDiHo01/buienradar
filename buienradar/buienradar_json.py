@@ -74,6 +74,30 @@ __ZI_TIMEZONE = ZoneInfo(__TIMEZONE)
 # for standard integer values in range 0..255.
 _MMU_LOOKUP = [10 ** ((val - 109) / 32) for val in range(256)]
 
+# Performance optimization: precomputed condition templates for day and night.
+_COND_CACHE_DAY = {
+    code: {
+        CONDCODE: code,
+        CONDITION: val[0],
+        DETAILED: val[1],
+        EXACT: val[2],
+        EXACTNL: val[3],
+        NIGHTTIME: False,
+    }
+    for code, val in __BRCONDITIONS.items()
+}
+_COND_CACHE_NIGHT = {
+    code: {
+        CONDCODE: code,
+        CONDITION: val[0],
+        DETAILED: val[1],
+        EXACT: val[2],
+        EXACTNL: val[3],
+        NIGHTTIME: True,
+    }
+    for code, val in __BRCONDITIONS.items()
+}
+
 __ACTUAL = "actual"
 __STATIONMEASUREMENTS = "stationmeasurements"
 __LAT = "lat"
@@ -649,21 +673,12 @@ def __cond_from_image(img):
     #  we cannot determine the condition.
     if img is None or len(img) < 6:
         return None
-    # __BRCONDITIONS = { 'code': 'conditon', 'detailed', 'exact', 'exact_nl'}
     image = img.lower()
     code = image[-5:-4]
-    night = False
-    if image[-6:-5] == code:
-        night = True
-    if code in __BRCONDITIONS:
-        return {CONDCODE: code,
-                CONDITION: __BRCONDITIONS[code][0],
-                DETAILED: __BRCONDITIONS[code][1],
-                EXACT: __BRCONDITIONS[code][2],
-                EXACTNL: __BRCONDITIONS[code][3],
-                NIGHTTIME: night
-                }
-    return None
+    night = (image[-6:-5] == code)
+    cache = _COND_CACHE_NIGHT if night else _COND_CACHE_DAY
+    cond = cache.get(code)
+    return cond.copy() if cond is not None else None
 
 
 def __select_nearest_ws(jsondata, latitude, longitude):
