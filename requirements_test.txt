@@ -1,5 +1,7 @@
 # Test runner and runtime imports used by the parser test suite.
 pytest==9.1.1
+pytest-cov==7.1.0
+coverage==7.17.0
 requests==2.34.2
 vincenty==0.1.4
 xmltodict==1.0.4
