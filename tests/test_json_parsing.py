@@ -135,11 +135,13 @@ def test_condition_from_code():
     res_str = condition_from_code("a")
     assert res_str is not None
     assert res_str["condition"] == "clear"
+    assert "exact_nl" in res_str
 
     res_int = condition_from_code(ord("a"))
     assert res_int is not None
     assert res_int["condition"] == "clear"
     assert res_int["condcode"] == ord("a")
+    assert "exact_nl" in res_int
 
     res_str_upper = condition_from_code("A")
     assert res_str_upper is not None

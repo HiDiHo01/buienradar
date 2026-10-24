@@ -37,7 +37,7 @@ class ConditionData(TypedDict):
     condition: str
     detailed: str
     exact: str
-    exactnl: str
+    exact_nl: str
 
 
 # Precomputed condition data templates for fast O(1) lookups
@@ -47,7 +47,7 @@ _CONDITION_DATA_CACHE: dict[str, ConditionData] = {
         condition=val[0],
         detailed=val[1],
         exact=val[2],
-        exactnl=val[3],
+        exact_nl=val[3],
     )
     for code, val in __BRCONDITIONS.items()
     if isinstance(val, (list, tuple)) and len(val) >= 4
