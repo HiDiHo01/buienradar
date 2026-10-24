@@ -1,0 +1,7 @@
+# Test runner and runtime imports used by the parser test suite.
+pytest==9.1.1
+requests==2.34.2
+vincenty==0.1.4
+xmltodict==1.0.4
+# Windows does not provide the IANA timezone database used by zoneinfo.
+tzdata==2026.5
