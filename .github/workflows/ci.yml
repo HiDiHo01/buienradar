@@ -1,0 +1,251 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUTF8: "1"
+
+jobs:
+  quality:
+    name: Python and workflow security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: .github/requirements-ci.txt
+
+      - name: Install quality tools
+        run: python -m pip install -r .github/requirements-ci.txt
+
+      - name: Check critical Python errors
+        run: python -m ruff check .
+
+      - name: Audit workflow security
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: zizmor --strict-collection --format=github .github/workflows
+
+  dependency-audit:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements_test.txt
+            .github/requirements-ci.txt
+
+      - name: Install audit tools
+        run: python -m pip install -r .github/requirements-ci.txt
+
+      - name: Audit test and CI dependencies
+        run: >-
+          python -m pip_audit --strict
+          -r requirements_test.txt
+          -r .github/requirements-ci.txt
+          --format=json --output=dependency-audit.json
+
+      - name: Upload dependency audit
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dependency-audit
+          path: dependency-audit.json
+          retention-days: 14
+          if-no-files-found: warn
+
+  workflows:
+    name: Validate GitHub Actions workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.x"
+          cache: false
+
+      - name: Lint workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+
+  tests:
+    name: Python ${{ matrix.python-version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+        python-version:
+          - "3.12"
+          - "3.13"
+          - "3.14"
+    env:
+      COVERAGE_FILE: .coverage.${{ matrix.os }}.${{ matrix.python-version }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements_test.txt
+
+      - name: Install test dependencies
+        run: python -m pip install -r requirements_test.txt
+
+      - name: Check dependency compatibility
+        run: python -m pip check
+
+      - name: Run all tests with branch coverage
+        run: >-
+          python -m pytest
+          --strict-config --strict-markers --import-mode=importlib
+          --cov --cov-report=term-missing --cov-report=xml:coverage.xml
+          --junitxml=junit.xml -ra test_json_parsing.py tests/
+
+      - name: Upload test diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: |
+            junit.xml
+            coverage.xml
+            .coverage.*
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: warn
+
+  coverage:
+    name: Combined coverage
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements_test.txt
+
+      - name: Install coverage tools
+        run: python -m pip install -r requirements_test.txt
+
+      - name: Download matrix reports
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: test-reports-*
+          path: coverage-data
+          merge-multiple: false
+
+      - name: Combine matrix coverage
+        run: python -m coverage combine --keep coverage-data/test-reports-*/.coverage.*
+
+      - name: Generate coverage reports
+        run: |
+          python -m coverage xml -o coverage.xml
+          python -m coverage report --format=markdown > coverage.md
+          cat coverage.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce measured coverage baseline
+        run: python -m coverage report --fail-under=59
+
+      - name: Upload combined coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: combined-coverage
+          path: |
+            coverage.xml
+            coverage.md
+          retention-days: 14
+          if-no-files-found: warn
+
+  result:
+    name: CI result
+    if: ${{ always() }}
+    needs:
+      - quality
+      - dependency-audit
+      - workflows
+      - tests
+      - coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every CI job to succeed
+        env:
+          CI_JOB_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          """Report required CI outcomes and reject missing or unsuccessful jobs."""
+          import json
+          import os
+
+          job_results = json.loads(os.environ["CI_JOB_RESULTS"])
+          if not job_results:
+              raise SystemExit("No required CI job results were received.")
+
+          summary_lines = ["| CI job | Result |", "| --- | --- |"]
+          failed_jobs = []
+          for job_name, job_details in job_results.items():
+              outcome = job_details.get("result", "missing")
+              summary_lines.append(f"| {job_name} | {outcome} |")
+              if outcome != "success":
+                  failed_jobs.append(job_name)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary_file:
+              summary_file.write("\n".join(summary_lines) + "\n")
+          if failed_jobs:
+              raise SystemExit("Required CI jobs did not succeed: " + ", ".join(failed_jobs))
+          PY
