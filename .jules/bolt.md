@@ -21,3 +21,7 @@
 ## 2026-10-20 - Pre-allocated Condition Dictionary Templates for Fast O(1) Parsing
 **Learning:** Constructing dictionary structures and performing repeated lookups into `__BRCONDITIONS` for every station measurement and forecast entry (~5-10 entries per payload) creates unnecessary dictionary allocation and string indexing overhead during feed parsing. Pre-allocating day/night condition dictionary templates and using `.copy()` yields a ~1.6x speedup for condition resolution and ~5% speedup for overall JSON parsing.
 **Action:** When mapping static code definitions to fixed dictionary schemas, pre-build condition/metadata template dictionaries at module import time and return `.copy()` shallow copies.
+
+## 2026-10-22 - Early Special-Case Branching and Pre-checking Uppercase Keys
+**Learning:** In `__parse_loc_data`, fetching `loc_data[value]` before checking `if key == CONDITION` or `if key == STATIONNAME` caused redundant dict accesses and `KeyError` exception overhead when optional keys were absent. Also, calling `str.upper()` blindly in helper functions like `__get_windazimuth` allocated new upper-cased strings unnecessarily when inputs were already uppercase. Branching special cases early and trying direct `.get(key)` before `.get(key.upper())` improved JSON parsing throughput by ~9.5%.
+**Action:** Order loop branches to check special-case keys before indexing payload dicts, and check direct dictionary lookups before applying string transformations (`str.upper()`).
