@@ -492,6 +492,8 @@ _WIND_DIRECTIONS = {
     'ESE': 112.5, 'SE': 135, 'SSE': 157.5, 'S': 180,
     'SSW': 202.5, 'SW': 225, 'WSW': 247.5,
 }
+# Pre-populate lowercase keys for fast O(1) direct dictionary lookup
+_WIND_DIRECTIONS.update({k.lower(): v for k, v in list(_WIND_DIRECTIONS.items())})
 
 
 def __parse_fc_data(fc_data):
@@ -546,13 +548,14 @@ def __get_windspeed(windforce):
 
 def __get_windazimuth(winddirection):
     """Get an estimate wind azimuth using the winddirection string."""
-    if not winddirection:
+    if not isinstance(winddirection, str) or not winddirection:
         return None
 
-    try:
-        return _WIND_DIRECTIONS[winddirection.upper()]
-    except (KeyError, AttributeError, TypeError):
-        return None
+    # Fast O(1) lookup avoiding .upper() string allocation and try-except overhead
+    res = _WIND_DIRECTIONS.get(winddirection)
+    if res is not None:
+        return res
+    return _WIND_DIRECTIONS.get(winddirection.upper())
 
 
 def __get_str(section, name):
