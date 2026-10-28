@@ -673,9 +673,11 @@ def __cond_from_image(img):
     #  we cannot determine the condition.
     if img is None or len(img) < 6:
         return None
-    image = img.lower()
-    code = image[-5:-4]
-    night = (image[-6:-5] == code)
+    # Performance optimization:
+    # Avoid lowercasing the full URL string (~67 chars). Slice and lowercase
+    # only the target condition code characters (-5 and -6).
+    code = img[-5].lower()
+    night = (img[-6].lower() == code)
     cache = _COND_CACHE_NIGHT if night else _COND_CACHE_DAY
     cond = cache.get(code)
     return cond.copy() if cond is not None else None
