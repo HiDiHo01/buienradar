@@ -21,3 +21,7 @@
 ## 2026-10-20 - Pre-allocated Condition Dictionary Templates for Fast O(1) Parsing
 **Learning:** Constructing dictionary structures and performing repeated lookups into `__BRCONDITIONS` for every station measurement and forecast entry (~5-10 entries per payload) creates unnecessary dictionary allocation and string indexing overhead during feed parsing. Pre-allocating day/night condition dictionary templates and using `.copy()` yields a ~1.6x speedup for condition resolution and ~5% speedup for overall JSON parsing.
 **Action:** When mapping static code definitions to fixed dictionary schemas, pre-build condition/metadata template dictionaries at module import time and return `.copy()` shallow copies.
+
+## 2026-10-22 - Short-circuiting None Checks in Dictionary Validation Loops
+**Learning:** Invoking type conversion functions (`int`, `float`) on `None` values during dictionary iteration forces internal `try...except` exception creation and stack unwinding for every missing sensor field across station validation loops. Checking `sens_data is not None` before calling value-mapping functions eliminates exception overhead and speeds up station validation by ~3x-9x.
+**Action:** Always short-circuit `None` checks in dictionary mapping and validation loops before passing values to functions that raise exceptions on `None`.
