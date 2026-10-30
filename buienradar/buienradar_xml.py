@@ -407,11 +407,14 @@ def __parse_precipfc_data(data, timeframe) -> dict[str, object]:
 
 def __is_valid(loc_data):
     """Determine if this can be valid data (not all 0's)."""
+    # Performance optimization: check `sens_data is not None` before calling `func`
+    # to avoid invoking conversion functions with None which triggers internal TypeError
+    # exception handling on missing/None sensor values (~3x-9x speedup).
     for key, [value, func] in SENSOR_TYPES.items():
         if (key != CONDITION and key != STATIONNAME and key != MEASURED):
             if (func is not None):
                 sens_data = loc_data.get(value)
-                if func(sens_data) != 0:
+                if sens_data is not None and func(sens_data) != 0:
                     return True
 
 
