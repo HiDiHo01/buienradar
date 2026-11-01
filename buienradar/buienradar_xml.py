@@ -186,6 +186,15 @@ SENSOR_TYPES = {
     WINDGUST: ['windstotenMS', __to_float2],
 }
 
+# Performance optimization: precompute validation fields for __is_valid.
+# Filtering keys (excluding CONDITION, STATIONNAME, MEASURED) and checking func is not None
+# once at import avoids dictionary iterating and branch checks per station validation call.
+_VALIDATION_FIELDS = tuple(
+    (value, func)
+    for key, [value, func] in SENSOR_TYPES.items()
+    if key not in (CONDITION, STATIONNAME, MEASURED) and func is not None
+)
+
 
 log = logging.getLogger(__name__)
 
@@ -407,12 +416,11 @@ def __parse_precipfc_data(data, timeframe) -> dict[str, object]:
 
 def __is_valid(loc_data):
     """Determine if this can be valid data (not all 0's)."""
-    for key, [value, func] in SENSOR_TYPES.items():
-        if (key != CONDITION and key != STATIONNAME and key != MEASURED):
-            if (func is not None):
-                sens_data = loc_data.get(value)
-                if func(sens_data) != 0:
-                    return True
+    # Use precomputed validation fields to avoid repeated dictionary and key filtering
+    for value, func in _VALIDATION_FIELDS:
+        sens_data = loc_data.get(value)
+        if func(sens_data) != 0:
+            return True
 
 
 def __parse_loc_data(loc_data, result):
