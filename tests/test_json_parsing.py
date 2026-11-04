@@ -1,9 +1,5 @@
 """Tests for JSON data parsing, wind helpers, and station validation."""
-import json
-
 import pytest
-
-from buienradar.constants import CONDITION, DATA, MAX_RAIN, MIN_RAIN, RAIN, SUCCESS
 from buienradar.buienradar_json import (
     __get_windspeed as get_windspeed,
     __get_windazimuth as get_windazimuth,
@@ -156,6 +152,31 @@ def test_condition_from_code():
 
     with pytest.raises(TypeError):
         condition_from_code(None)
+
+
+def test_condition_from_code_supports_unhashable_subclasses() -> None:
+    """Preserve condition lookup for unhashable str and int subclasses."""
+    from buienradar.buienradar import condition_from_code
+
+    class UnhashableString(str):
+        """String condition code without a usable hash."""
+
+        __hash__ = None
+
+    class UnhashableInteger(int):
+        """Integer condition code without a usable hash."""
+
+        __hash__ = None
+
+    for condition_code in (
+        UnhashableString("a"),
+        UnhashableString("A"),
+        UnhashableInteger(ord("a")),
+    ):
+        result = condition_from_code(condition_code)
+        assert result is not None
+        assert result["condition"] == "clear"
+        assert result["condcode"] is condition_code
 
 
 @pytest.mark.parametrize(
