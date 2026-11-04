@@ -177,8 +177,11 @@ def condition_from_code(condcode: int | str) -> ConditionData | None:
     if not isinstance(condcode, (int, str)):
         raise TypeError("Condition code must be an integer or string")
 
-    # Fast path: direct O(1) cache lookup for string or integer keys (~1.6x speedup)
-    cond = _CONDITION_DATA_CACHE.get(condcode)
+    # Direct lookup is safe for built-in keys; subclasses can be unhashable.
+    if type(condcode) in (str, int):
+        cond = _CONDITION_DATA_CACHE.get(condcode)
+    else:
+        cond = None
     if cond is None:
         if isinstance(condcode, int):
             try:
@@ -186,7 +189,7 @@ def condition_from_code(condcode: int | str) -> ConditionData | None:
             except (ValueError, OverflowError):
                 code_key = ""
         else:
-            code_key = condcode.lower()
+            code_key = str(condcode).lower()
 
         cond = _CONDITION_DATA_CACHE.get(code_key)
         if cond is None and isinstance(condcode, int):
