@@ -154,26 +154,30 @@ def test_condition_from_code():
         condition_from_code(None)
 
 
-def test_condition_from_code_supports_unhashable_subclasses() -> None:
-    """Preserve condition lookup for unhashable str and int subclasses."""
+def test_condition_from_code_supports_unhashable_subclasses():
+    """Test condition lookup supports unhashable str and int subclasses."""
     from buienradar.buienradar import condition_from_code
 
-    class UnhashableString(str):
-        """String condition code without a usable hash."""
+    class UnhashableStr(str):
+        __hash__ = None  # type: ignore[assignment]
 
-        __hash__ = None
+    class UnhashableInt(int):
+        __hash__ = None  # type: ignore[assignment]
 
-    class UnhashableInteger(int):
-        """Integer condition code without a usable hash."""
+    s_lower = UnhashableStr("a")
+    res_lower = condition_from_code(s_lower)
+    assert res_lower is not None
+    assert res_lower["condition"] == "clear"
+    assert res_lower["condcode"] is s_lower
 
-        __hash__ = None
+    s_upper = UnhashableStr("A")
+    res_upper = condition_from_code(s_upper)
+    assert res_upper is not None
+    assert res_upper["condition"] == "clear"
+    assert res_upper["condcode"] is s_upper
 
-    for condition_code in (
-        UnhashableString("a"),
-        UnhashableString("A"),
-        UnhashableInteger(ord("a")),
-    ):
-        result = condition_from_code(condition_code)
-        assert result is not None
-        assert result["condition"] == "clear"
-        assert result["condcode"] is condition_code
+    i_val = UnhashableInt(97)
+    res_int = condition_from_code(i_val)
+    assert res_int is not None
+    assert res_int["condition"] == "clear"
+    assert res_int["condcode"] is i_val
