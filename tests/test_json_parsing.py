@@ -1,5 +1,9 @@
 """Tests for JSON data parsing, wind helpers, and station validation."""
+import json
+
 import pytest
+
+from buienradar.constants import CONDITION, DATA, MAX_RAIN, MIN_RAIN, RAIN, SUCCESS
 from buienradar.buienradar_json import (
     __get_windspeed as get_windspeed,
     __get_windazimuth as get_windazimuth,
@@ -152,3 +156,80 @@ def test_condition_from_code():
 
     with pytest.raises(TypeError):
         condition_from_code(None)
+
+
+@pytest.mark.parametrize(
+    "invalid_icon", [None, 42, True, ["a.png"], {"url": "a.png"}]
+)
+def test_invalid_station_icon_is_ignored(invalid_icon: object) -> None:
+    """Malformed station icon values must not abort valid weather parsing."""
+    payload = {
+        "actual": {
+            "stationmeasurements": [
+                {
+                    "stationid": 6260,
+                    "stationname": "De Bilt",
+                    "lat": "52.10",
+                    "lon": "5.18",
+                    "temperature": "15.4",
+                    "iconurl": invalid_icon,
+                }
+            ]
+        },
+        "forecast": {"fivedayforecast": []},
+    }
+
+    result = parse_json_data(json.dumps(payload), None, 52.09, 5.12)
+    assert result[SUCCESS] is True
+    assert result[DATA][CONDITION] is None
+    assert result[DATA]["temperature"] == 15.4
+
+
+@pytest.mark.parametrize(
+    "invalid_icon", [None, 42, True, ["a.png"], {"url": "a.png"}]
+)
+def test_invalid_forecast_icon_is_ignored(invalid_icon: object) -> None:
+    """Malformed forecast icon values must not abort forecast parsing."""
+    result = parse_fc_data([{"iconurl": invalid_icon}])
+    assert result[0][CONDITION] is None
+
+
+@pytest.mark.parametrize("invalid_direction", [["ZW"], {"direction": "ZW"}, {"ZW"}])
+def test_unhashable_wind_direction_returns_none(invalid_direction: object) -> None:
+    """Return None for non-string, unhashable wind directions."""
+    assert get_windazimuth(invalid_direction) is None
+
+
+def test_unhashable_string_wind_direction_remains_supported() -> None:
+    """Retain uppercase fallback support for unhashable string subclasses."""
+
+    class UnhashableDirection(str):
+        """String subclass whose instances cannot be dictionary keys."""
+
+        __hash__ = None
+
+    assert get_windazimuth(UnhashableDirection("zw")) == 225
+
+
+@pytest.mark.parametrize(
+    ("rain_values", "expected_rain", "expected_min", "expected_max"),
+    [
+        ({"mmRainMin": "1", "mmRainMax": "3"}, 2.0, 1.0, 3.0),
+        ({"mmRainMin": "invalid", "mmRainMax": "3"}, 3.0, 0.0, 3.0),
+        ({"mmRainMax": "3"}, 3.0, 0.0, 3.0),
+        ({"mmRainMin": "1"}, 1.0, 1.0, 0.0),
+        ({"mmRainMin": None, "mmRainMax": "invalid"}, None, 0.0, 0.0),
+        ({}, None, 0.0, 0.0),
+    ],
+)
+def test_forecast_rain_values_preserve_missing_value_semantics(
+    rain_values: dict[str, object],
+    expected_rain: float | None,
+    expected_min: float,
+    expected_max: float,
+) -> None:
+    """Reuse parsed rain values without changing invalid-field behavior."""
+    result = parse_fc_data([rain_values])[0]
+    assert result[RAIN] == expected_rain
+    assert result[MIN_RAIN] == expected_min
+    assert result[MAX_RAIN] == expected_max
