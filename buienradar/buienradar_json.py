@@ -510,8 +510,14 @@ def __parse_fc_data(fc_data):
 
         min_temp = __get_float(day, __MINTEMPERATUREMIN)
         max_temp = __get_float(day, __MAXTEMPERATUREMAX)
-        min_rain = __get_float(day, __MMRAINMIN)
-        max_rain = __get_float(day, __MMRAINMAX)
+        min_rain = __get_optional_float(day, __MMRAINMIN)
+        max_rain = __get_optional_float(day, __MMRAINMAX)
+        if min_rain is None:
+            rain = max_rain
+        elif max_rain is None:
+            rain = min_rain
+        else:
+            rain = (min_rain + max_rain) / 2
 
         fcdata = {
             CONDITION: cond,
@@ -521,9 +527,9 @@ def __parse_fc_data(fc_data):
             MAX_TEMP: max_temp,
             SUN_CHANCE: __get_int(day, __SUNCHANCE),
             RAIN_CHANCE: __get_int(day, __RAINCHANCE),
-            RAIN: __get_avr_float(day, __MMRAINMIN, __MMRAINMAX),
-            MIN_RAIN: min_rain,  # new
-            MAX_RAIN: max_rain,  # new
+            RAIN: rain,
+            MIN_RAIN: min_rain if min_rain is not None else 0.0,  # new
+            MAX_RAIN: max_rain if max_rain is not None else 0.0,  # new
             # depricated / for compatibility:
             SNOW: 0,
             WINDFORCE: wind_force,
@@ -552,15 +558,16 @@ def __get_windazimuth(winddirection):
     if not winddirection:
         return None
 
-    # Performance optimization: check direct lookup first for uppercase inputs
-    # to avoid redundant string upper() conversion and allocation.
-    res = _WIND_DIRECTIONS.get(winddirection)
-    if res is not None:
-        return res
+    # Only built-in strings are guaranteed hashable. Subclasses still use
+    # the original uppercase normalization for compatibility.
+    if type(winddirection) is str:
+        res = _WIND_DIRECTIONS.get(winddirection)
+        if res is not None:
+            return res
 
     try:
         return _WIND_DIRECTIONS.get(winddirection.upper())
-    except (KeyError, AttributeError, TypeError):
+    except (AttributeError, TypeError):
         return None
 
 
@@ -578,6 +585,14 @@ def __get_float(section, name):
         return float(section[name])
     except (ValueError, TypeError, KeyError):
         return float(0)
+
+
+def __get_optional_float(section, name):
+    """Return a parsed float, or None when the forecast value is invalid."""
+    try:
+        return float(section[name])
+    except (ValueError, TypeError, KeyError):
+        return None
 
 
 def __get_avr_float(section, name1, name2):
@@ -680,7 +695,7 @@ def __cond_from_image(img):
     # - http://somehost/somefolder/C.png
     #  if there is not url or the length is too small,
     #  we cannot determine the condition.
-    if img is None or len(img) < 6:
+    if not isinstance(img, str) or len(img) < 6:
         return None
     image = img.lower()
     code = image[-5:-4]
