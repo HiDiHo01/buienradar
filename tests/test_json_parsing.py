@@ -1,5 +1,9 @@
 """Tests for JSON data parsing, wind helpers, and station validation."""
+import json
+
 import pytest
+
+from buienradar.constants import CONDITION, DATA, MAX_RAIN, MIN_RAIN, RAIN, SUCCESS
 from buienradar.buienradar_json import (
     __get_windspeed as get_windspeed,
     __get_windazimuth as get_windazimuth,
