@@ -41,6 +41,7 @@ def test_wind_azimuth_unhashable_string_subclass() -> None:
 
     assert get_windazimuth(UnhashableDirection("zw")) == 225
 
+
 def test_is_valid_station():
     """Test station data validity check."""
     valid_station = {
