@@ -31,8 +31,9 @@ called lookup helper such as `__get_windazimuth`.
 
 - Precompute lowercase aliases only when the mapping is stable and the extra
   entries preserve existing meanings.
-- Keep the normal, hashable-string path fast: first try a direct
-  `_WIND_DIRECTIONS.get(direction)` lookup, and normalize only if it misses.
+- Keep exact built-in strings fast: when `type(direction) is str`, first try a
+  direct `_WIND_DIRECTIONS.get(direction)` lookup and normalize only on a miss.
+  Handle subclasses through normalization without assuming they are hashable.
 - `isinstance(direction, str)` does **not** guarantee that `direction` can be
   hashed: a `str` subclass can set `__hash__ = None` or override `__hash__`
   to raise an exception.
@@ -96,3 +97,64 @@ python -m pytest --strict-config --strict-markers --import-mode=importlib -ra te
 - A resolved review thread is not proof that all CI checks passed or that GitHub
   reports the PR as mergeable.
 - Keep documentation updates focused on demonstrated, reusable lessons.
+
+## 6. Resolve PR conflicts while retaining upstream changes
+
+**When to use:** A PR overlaps with newer parser, test, documentation, or CI
+changes in `main`, or GitHub reports an unmergeable branch.
+
+1. Read `AGENTS.md` and `AI_POLICY.md` from the relevant branch, inspect the
+   base/head history, and compare all changed file paths before attempting to
+   resolve conflicts.
+2. Preserve the newest behavior from `main` and apply only the PR's intended
+   changes on top. In PR #13 this included the modernized JSON parser,
+   deterministic tests, dependency audits, matrix testing, coverage gates,
+   and security validation.
+3. Check that both `test_json_parsing.py` locations remain covered, and restore
+   `skills.md` if it was accidentally dropped by a subsequent commit.
+4. Verify that the post-resolution diff is focused on the requested feature,
+   not large unrelated deletions or changes to the project's CI configuration.
+5. Compare the resolved Git tree and branch ancestry, then check GitHub's actual
+   mergeability and open review threads. Do not equate a successful merge commit
+   with a completed or green CI workflow.
+
+## 7. Preserve a clean, rebaseable pull-request history
+
+**When to use:** GitHub reports `mergeable: true` but `rebaseable: false`, or a
+PR has accumulated conflicting commits even though its final tree is correct.
+
+- GitHub's `mergeable`, `rebaseable`, and `mergeable_state` report different
+  properties. A clean final merge tree is not proof that every historical PR
+  commit can be replayed on `main`.
+- Inspect the current base SHA, head SHA, merge base, changed files, and latest
+  CI results. The current tree may already contain the correct resolution.
+- If explicitly authorized to rewrite the PR branch history, preserve the exact
+  verified result tree and create a single-parent commit on current `main`
+  rather than replaying conflict-prone commits. This is a history rewrite,
+  not a code rewrite, and must not remove upstream changes.
+- Use a non-forced fast-forward whenever possible. When the authorized change
+  requires a force update, use force-with-lease against the head SHA read
+  immediately before the update. Abort on a stale lease; never overwrite
+  another contributor's concurrent work.
+- Verify the new commit has `main` as its parent, is one commit ahead and zero
+  commits behind, has the expected narrow diff, and GitHub actually reports
+  `rebaseable: true` and `mergeable: true`.
+- A history rewrite changes the head SHA and normally triggers new CI. Report
+  the latest run accurately; a previous successful run with an identical Git
+  tree is supporting evidence, **not** a substitute for current required checks.
+- Do not merge automatically when only a clean rebase was requested.
+
+## 8. Keep learned skills maintained as part of the workflow
+
+**When to use:** A new bug fix, review, conflict resolution, or dependency/CI
+change reveals a useful, repeatable method.
+
+- Convert a verified lesson into a short procedure with its applicability,
+  expected safeguards, and relevant repository-specific verification.
+- Maintain `skills.md` alongside the implementation change. Update existing
+  sections when behavior changes; do not accumulate contradictory guidance.
+- Keep mandatory instructions in `AGENTS.md` and policy in `AI_POLICY.md`.
+  Skills document proven techniques; they do not grant additional permissions.
+- Re-read the documented steps against the current code and CI to remove stale
+  assumptions. Reference actual outcomes without claiming that pending checks
+  succeeded.
