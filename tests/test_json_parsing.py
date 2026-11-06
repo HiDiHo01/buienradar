@@ -35,6 +35,39 @@ def test_wind_helpers():
     assert get_windazimuth("INVALID_DIR") is None
 
 
+
+@pytest.mark.parametrize("error_type", [KeyError, AttributeError, TypeError])
+def test_wind_azimuth_hash_error_uses_normalized_fallback(
+    error_type: type[Exception],
+) -> None:
+    """Support string subclasses whose hash method raises."""
+
+    class InvalidHashDirection(str):
+        """Model a subclass with a failing hash function."""
+
+        def __hash__(self) -> int:
+            """Raise the selected hash failure."""
+            raise error_type("invalid hash")
+
+    assert get_windazimuth(InvalidHashDirection("zw")) == 225
+
+
+@pytest.mark.parametrize("error_type", [KeyError, AttributeError, TypeError])
+def test_wind_azimuth_upper_error_returns_none(
+    error_type: type[Exception],
+) -> None:
+    """Return None if a direction cannot be normalized."""
+
+    class InvalidUpperDirection(str):
+        """Model a string subclass with a failing uppercase method."""
+
+        def upper(self) -> str:
+            """Raise the selected normalization failure."""
+            raise error_type("invalid uppercase")
+
+    assert get_windazimuth(InvalidUpperDirection("invalid")) is None
+
+
 def test_is_valid_station():
     """Test station data validity check."""
     valid_station = {
