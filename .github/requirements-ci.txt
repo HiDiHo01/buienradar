@@ -1,0 +1,4 @@
+# Quality and security tooling runs on Linux with Python 3.14.
+ruff==0.17.2
+pip-audit==2.10.1
+zizmor==1.31.1

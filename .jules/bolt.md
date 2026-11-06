@@ -21,3 +21,15 @@
 ## 2026-10-20 - Pre-allocated Condition Dictionary Templates for Fast O(1) Parsing
 **Learning:** Constructing dictionary structures and performing repeated lookups into `__BRCONDITIONS` for every station measurement and forecast entry (~5-10 entries per payload) creates unnecessary dictionary allocation and string indexing overhead during feed parsing. Pre-allocating day/night condition dictionary templates and using `.copy()` yields a ~1.6x speedup for condition resolution and ~5% speedup for overall JSON parsing.
 **Action:** When mapping static code definitions to fixed dictionary schemas, pre-build condition/metadata template dictionaries at module import time and return `.copy()` shallow copies.
+
+## 2026-10-22 - Pre-computing Multi-key Indexing for O(1) Code Lookups
+**Learning:** `condition_from_code` accepts condition codes as lowercase strings ('a'), uppercase strings ('A'), and integer ASCII codes (`ord('a')` = 97). Performing `str(condcode).lower()` and `chr(condcode)` transformations on every lookup incurs unnecessary string operations and conditional checks. Pre-indexing `_CONDITION_DATA_CACHE` with lowercase, uppercase, and integer keys at module load time enables direct O(1) dictionary lookup for all standard keys, achieving a ~1.6x speedup (~38% execution time reduction).
+**Action:** When a lookup function accepts diverse representations of a fixed domain key (e.g. string case variations or integer ASCII codes), pre-index the cache dictionary with all valid key variants to enable immediate O(1) hits.
+
+## 2026-10-22 - Early Special-Case Branching and Pre-checking Uppercase Keys
+**Learning:** In `__parse_loc_data`, fetching `loc_data[value]` before checking `if key == CONDITION` or `if key == STATIONNAME` caused redundant dict accesses and `KeyError` exception overhead when optional keys were absent. Also, calling `str.upper()` blindly in helper functions like `__get_windazimuth` allocated new upper-cased strings unnecessarily when inputs were already uppercase. Branching special cases early and trying direct `.get(key)` before `.get(key.upper())` improved JSON parsing throughput by ~9.5%.
+**Action:** Order loop branches to check special-case keys before indexing payload dicts, and check direct dictionary lookups before applying string transformations (`str.upper()`).
+
+## 2026-10-23 - Pre-partitioning Configuration Items to Eliminate Loop Branching
+**Learning:** When iterating through a configuration mapping (such as `SENSOR_TYPES` with 21 entries) where only 1 or 2 keys require special logic (`CONDITION` and `STATIONNAME`), checking `if key == ...` in every loop iteration wastes CPU cycles on 19 non-special iterations. Pre-partitioning the mapping at module load into standard 1-to-1 mapped tuples and handling special keys directly outside the loop yields a ~15.5% speedup. Similarly, pre-filtering validation tuples at import time speeds up station validation checks (`__is_valid`) by 17% (and by ~65% for empty stations).
+**Action:** Pre-partition configuration mappings into homogenous tuples at import time instead of placing condition branches for minority special cases inside loops.
