@@ -3,7 +3,7 @@
 These instructions apply to the entire `buienradar` repository.
 
 ## Before making changes
-- Read this file and `AI_POLICY.md` before editing.
+- Read this file and `AI_POLICY.md` before editing. Review `skills.md` when its learned practices relate to the task; it supplements but never overrides repository policy.
 - Inspect the relevant source files, tests, packaging metadata, documentation, and CI workflows before proposing or making changes.
 - Follow the existing architecture and public API. This repository is a Python library for retrieving and parsing Buienradar weather data; do not assume it is a Home Assistant custom integration.
 - Prefer the smallest complete change that fixes the underlying problem. Avoid unrelated refactoring and preserve backwards compatibility unless the task explicitly requires a breaking change.
@@ -43,8 +43,11 @@ These instructions apply to the entire `buienradar` repository.
 - Report actionable review findings with severity, file/line, failure scenario, impact, and a concrete fix. Do not present speculation or style preferences as defects.
 - Do not push commits, approve, merge, or otherwise change a pull request unless explicitly asked.
 - Keep changes scoped to the request and update relevant documentation when behavior changes.
+- Keep pull requests cleanly rebaseable on the current base branch before marking them merge-ready. Confirm GitHub `rebaseable: true` and `mergeable: true` separately; a mergeable PR can still have conflicting commits during rebase. Preserve upstream code, tests, dependencies, and CI improvements while resolving conflicts. Do not delete or downgrade unrelated changes to make the status green.
+- When rebase is explicitly requested or authorized, prefer a linear commit history based on current `main`. Rewriting published branch history requires the user's permission; use a lease against the expected head SHA and recheck for concurrent changes. Never force-update the base branch. Verify the actual PR diff and current CI afterward.
+- Review reusable lessons from each substantive bug fix, review, conflict resolution, or changed engineering practice. Update `skills.md` in the same PR whenever a new, verified skill is learned or an existing skill changes; revise or remove obsolete guidance instead of duplicating it. Keep `AGENTS.md` for binding rules, `AI_POLICY.md` for governing policy, and `skills.md` for practical techniques.
 
 ## Documentation and communication
-- Keep `CONTRIBUTING.md`, `SECURITY.md`, and this guidance consistent with actual repository capabilities.
+- Keep `CONTRIBUTING.md`, `SECURITY.md`, `skills.md`, and this guidance consistent with actual repository capabilities.
 - `AI_POLICY.md` defines the policy for AI-assisted work; this file provides operational instructions and does not override it.
 - Summarize the change, verification performed, and known limitations clearly.
