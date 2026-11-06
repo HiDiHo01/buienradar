@@ -512,6 +512,8 @@ _WIND_DIRECTIONS = {
     'ESE': 112.5, 'SE': 135, 'SSE': 157.5, 'S': 180,
     'SSW': 202.5, 'SW': 225, 'WSW': 247.5,
 }
+# Pre-populate lowercase aliases for fast lookups of built-in strings.
+_WIND_DIRECTIONS.update({key.lower(): value for key, value in list(_WIND_DIRECTIONS.items())})
 
 
 def __parse_fc_data(fc_data):
@@ -580,8 +582,8 @@ def __get_windazimuth(winddirection):
     if not winddirection:
         return None
 
-    # Only built-in strings are guaranteed hashable. Subclasses still use
-    # the original uppercase normalization for compatibility.
+    # Use the fast, case-insensitive lookup for built-in strings only.
+    # Subclasses may be unhashable; normalize them for compatibility.
     if type(winddirection) is str:
         res = _WIND_DIRECTIONS.get(winddirection)
         if res is not None:
@@ -589,7 +591,7 @@ def __get_windazimuth(winddirection):
 
     try:
         return _WIND_DIRECTIONS.get(winddirection.upper())
-    except (AttributeError, TypeError):
+    except (KeyError, AttributeError, TypeError):
         return None
 
 
