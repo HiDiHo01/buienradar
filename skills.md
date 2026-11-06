@@ -158,3 +158,47 @@ change reveals a useful, repeatable method.
 - Re-read the documented steps against the current code and CI to remove stale
   assumptions. Reference actual outcomes without claiming that pending checks
   succeeded.
+
+## 9. Perform an evidence-based heightened PR review every time
+
+**When to use:** Every pull-request review, approval recommendation, or
+merge-readiness assessment, including follow-up reviews after a fix or rebase.
+
+1. **Establish the current baseline.** Read `AGENTS.md` and `AI_POLICY.md`,
+   examine the live PR head, base commit, complete diff, related code paths,
+   CI configuration, tests, and unresolved discussions. Re-check branch status
+   immediately before making a final recommendation.
+2. **Trace the real production behavior.** Follow changed data from public
+   entry point through callers, helpers, serialization, and outward-facing
+   results. Compare against `main`; test valid, invalid, empty, boundary,
+   subclass, and exception paths as relevant. Consider backward compatibility,
+   security/privacy, resource usage, and concurrency when applicable.
+3. **Challenge measurable claims.** For speed, memory, availability, or
+   compatibility claims, distinguish helper-only benchmarks from the actual
+   integration or end-to-end workload. Use a representative baseline, equivalent
+   inputs, repeated measurements when possible, and acknowledge measurement
+   noise. A passing benchmark does not prove overall product improvement.
+4. **Use PR #13 as a regression lesson.** The forecast parser already calls
+   `wind_str.upper()` before `__get_windazimuth(wind_dir_upper)`. That path
+   already receives uppercase strings; optimizing direct lowercase helper
+   lookups therefore does not by itself demonstrate faster forecast parsing.
+   Benchmark `__parse_fc_data()` against `main` before accepting a forecast
+   performance claim, or narrow the PR description to the verified helper case.
+5. **Inspect test quality, not just the total.** Check that tests would fail
+   before the change for the intended bug, exercise the real callers and
+   failure paths, and avoid duplication or missing boundary conditions. Review
+   coverage and CI status for the **current** commit and its supported Python
+   and OS matrix; clearly distinguish `passed`, `failed`, and `not run`.
+6. **Publish actionable conclusions.** For each verified issue provide
+   P0–P3 priority, exact file and line, triggering scenario, impact, and
+   smallest safe correction. Explicitly separate merge blockers from
+   non-blocking improvements. If no actionable issue is found, say so without
+   manufacturing defects.
+7. **Give an evidence-based verdict.** Report separately whether GitHub marks
+   the PR mergeable/rebaseable, whether CI is green, and whether the *review*
+   is satisfied. Do not approve or call a PR fully merge-ready solely because
+   GitHub reports `mergeable: true`, review threads are resolved, or CI passes.
+   State unresolved risks and evidence gaps rather than overstating confidence.
+
+This is an engineering review procedure, not permission to publish a review,
+approve, modify, force-push, or merge without the relevant user authorization.
