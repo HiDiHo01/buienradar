@@ -276,3 +276,36 @@ after a PR has already integrated updates from `main`.
 
 The verified lesson is the **process**: review feedback must not erase earlier
 validated work, and review closures require evidence from the current branch.
+
+## 12. Reproduce performance comparisons with timeit
+
+**When to use:** A change claims faster parsing or lookup performance.
+
+1. Add a small, deterministic performance test using Python's standard-library
+   `timeit.repeat()`, without a new benchmarking dependency. Always compare
+   against the relevant implementation on `main`, not against an arbitrary
+   synthetic fast/slow function.
+2. Use the **same fixed inputs and environment** for both implementations.
+   For PR #13, `tests/test_wind_azimuth_timeit.py` compares the original
+   uppercase-only wind map to the new alias-enabled lookup and also executes a
+   five-day forecast through `__parse_fc_data()`, swapping only the lookup.
+3. Assert identical output values **before interpreting timings**. Keep
+   malformed inputs and compatibility checks in deterministic regression tests.
+4. Run multiple `timeit.repeat()` measurements and report median elapsed
+   time per batch plus the reference/candidate ratio. The test stores timings
+   as JUnit properties and prints them when capture is disabled:
+
+   ```bash
+   python -m pytest -q -s tests/test_wind_azimuth_timeit.py
+   ```
+
+5. Keep benchmark results **informational** in standard CI; CPU contention,
+   profiling/coverage overhead, Python versions and different runners can
+   change the ratio. Do not fail CI because one implementation is slower on a
+   single noisy measurement.
+6. Treat helper-specific speedups as helper-specific. The actual production
+   path may normalize wind directions before calling the helper; only a
+   full-path benchmark can substantiate overall forecast speedup claims.
+7. When publishing evidence, identify the Python version, OS, repeat count,
+   batch size, reference revision and whether coverage was enabled. Do not
+   treat previous or third-party measurements as independently verified data.
