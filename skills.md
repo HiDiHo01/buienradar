@@ -407,3 +407,42 @@ with an authorized, lease-protected single-parent commit.
    Do not claim an overall parser speedup from a helper-only microbenchmark.
 7. Preserve the latest `main` parser safeguards, quality workflows,
    security audits, and historical regression coverage when rebasing.
+
+## 16. Optimize precipitation line parsing without altering validation
+
+**When to use:** Improving JSON or XML precipitation forecast processing
+(`__parse_precipfc_data`).
+
+1. Keep the identical delimiter contract: `split("|")` with exactly two
+   fields is equivalent to `partition("|")` only when the separator exists
+   **and** the remainder contains no second pipe. Empty numeric values are
+   rejected by the existing numeric parser, not by delimiter validation.
+2. `partition()` avoids constructing a list for each line, but does **not**
+   make string handling zero-allocation: the returned tuple and substrings
+   are still objects.
+3. Read `log.isEnabledFor(logging.DEBUG)` once before the per-line loop
+   if processing uses a fixed logger configuration. Document that mid-payload
+   changes in logger level are not reflected until the next payload.
+4. Test JSON and XML with identical synthetic precipitation rows:
+   missing/multiple pipes, invalid or comma-decimal numbers, values outside
+   the 0–255 lookup range, empty input, header-only input, and short/long
+   timeframes. Confirm `average`, `total`, and `timeframe` remain equal
+   to the implementation on `main`.
+5. Use `tests/test_precipitation_optimization.py` for repeatable
+   `timeit.repeat()` comparisons of the original and proposed helpers,
+   **and** the production `parse_json_data()` / `parse_xml_data()` paths
+   with the same deterministic weather and rain payloads. Verify output
+   parity before interpreting results. Run without coverage collection:
+
+   ```bash
+   python -m pytest -q -s tests/test_precipitation_optimization.py -k timeit
+   ```
+
+6. The parser processes at most `round(timeframe / 5)` data rows after
+   skipping the header. A 60-minute workload is **12**, not 24, rows.
+   Benchmark `timeframe=120` to exercise a complete two-hour, 24-row
+   precipitation payload.
+7. Log median elapsed times and reference/candidate ratios. Do not gate CI
+   on timing or claim a fixed speedup without reproducible results in
+   representative full weather parsing. Preserve current `main` code,
+   parser tests, security audits, coverage baseline and CI when rebasing.

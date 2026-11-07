@@ -158,6 +158,9 @@ jobs:
       - name: Compare icon-condition timeit baselines (informational)
         run: python -m pytest -q -s tests/test_icon_conditions.py -k timeit
 
+      - name: Compare precipitation parser timeit baselines (informational)
+        run: python -m pytest -q -s tests/test_precipitation_optimization.py -k timeit
+
       - name: Upload test diagnostics
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

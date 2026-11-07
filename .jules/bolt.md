@@ -41,3 +41,15 @@
 ## 2026-10-22 - Fast-path None Checks in Type Conversion Helpers
 **Learning:** Calling `int(None)` or `float(None)` raises `TypeError` and invokes exception handling. Jules reported an approximately 18x null-only helper microbenchmark gain from explicitly checking `None`; this does not demonstrate a comparable gain in normal feed processing.
 **Action:** Preserve converter return contracts, cover non-null inputs, and benchmark both JSON and XML station parsers. Report timing ratios as diagnostics, not CI gates.
+
+## 2026-10-22 - Logger State Caching and String Partitioning in Line Parsers
+**Learning:** Precomputing `log.isEnabledFor(logging.DEBUG)` for a precipitation
+payload avoids repeated disabled debug calls. `str.partition("|")` avoids
+constructing a list but still allocates a tuple and substrings; preserving
+`split("|")` semantics requires checking for missing and extra pipes.
+Jules reported ~1.34x in one helper-only test; a 60-minute timeframe parses
+up to 12, not 24, forecast rows.
+**Action:** Preserve numeric conversion and malformed-line behavior, compare
+the baseline and optimized JSON and XML helpers plus their public weather
+parsing call paths using equivalent 120-minute synthetic payloads, and treat
+timeit ratios as informational rather than a guaranteed feed speedup.

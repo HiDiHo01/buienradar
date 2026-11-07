@@ -666,14 +666,17 @@ def __parse_precipfc_data(data, timeframe):
     # Performance optimization:
     # Use precomputed lookup table `_MMU_LOOKUP` for integer values 0..255
     # (formula: 10**((val-109)/32)) to avoid expensive exponentiation per line.
+    # Cache the logger's DEBUG status once per payload.
+    # partition() avoids a list allocation while preserving delimiter validation.
+    debug_enabled = log.isEnabledFor(logging.DEBUG)
     for index in range(1, nrlines):
         line = lines[index]
-        log.debug("__parse_precipfc_data: line: %s", line)
-        parts = line.split("|")
-        if len(parts) != 2:
+        if debug_enabled:
+            log.debug("__parse_precipfc_data: line: %s", line)
+        val_str, separator, remainder = line.partition("|")
+        if not separator or "|" in remainder:
             log.warning("Skipping malformed precipitation line: %r", line)
             continue
-        val_str = parts[0]
         # See buienradar documentation for this api, attribution
         # https://www.buienradar.nl/overbuienradar/gratis-weerdata
         #
