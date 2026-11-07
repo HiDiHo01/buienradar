@@ -3,7 +3,6 @@
 Correctness is mandatory; timing differences are diagnostic rather than CI gates.
 """
 
-from collections.abc import Callable
 from statistics import median
 import timeit
 from unittest.mock import patch
@@ -62,9 +61,8 @@ def _report_timeit_comparison(
     reference_samples: list[float],
     candidate_samples: list[float],
     iterations: int,
-    record_property: Callable[[str, object], None],
 ) -> None:
-    """Record median timing and ratio without a flaky performance assertion."""
+    """Print median timing and ratio without a flaky performance assertion."""
     reference_us = median(reference_samples) * 1_000_000 / iterations
     candidate_us = median(candidate_samples) * 1_000_000 / iterations
 
@@ -72,10 +70,6 @@ def _report_timeit_comparison(
     assert candidate_us > 0
 
     speedup = reference_us / candidate_us
-    record_property(f"timeit_{label}_reference_us", round(reference_us, 6))
-    record_property(f"timeit_{label}_candidate_us", round(candidate_us, 6))
-    record_property(f"timeit_{label}_speedup", round(speedup, 4))
-
     print(
         f"timeit {label}: reference={reference_us:.3f} us, "
         f"candidate={candidate_us:.3f} us, ratio={speedup:.3f}x "
@@ -83,9 +77,7 @@ def _report_timeit_comparison(
     )
 
 
-def test_timeit_direct_wind_lookup(
-    record_property: Callable[[str, object], None],
-) -> None:
+def test_timeit_direct_wind_lookup() -> None:
     """Compare identical direct helper inputs and verify equal results."""
     directions = ("n", "no", "zw", "sse", "nnw", "ENE", "Zw", "invalid")
     assert tuple(_reference_wind_azimuth(item) for item in directions) == tuple(
@@ -110,13 +102,11 @@ def test_timeit_direct_wind_lookup(
         run_candidate, repeat=_TIMEIT_REPEATS, number=iterations
     )
     _report_timeit_comparison(
-        "direct_lookup", reference, candidate, iterations, record_property
+        "direct_lookup", reference, candidate, iterations
     )
 
 
-def test_timeit_five_day_forecast(
-    record_property: Callable[[str, object], None],
-) -> None:
+def test_timeit_five_day_forecast() -> None:
     """Compare real forecast parsing with only the wind lookup substituted."""
     forecast = _five_day_forecast()
     optimized_lookup = json_parser.__get_windazimuth
@@ -140,5 +130,5 @@ def test_timeit_five_day_forecast(
     assert reference_result == candidate_result
     assert len(reference_result) == 5
     _report_timeit_comparison(
-        "five_day_forecast", reference, candidate, 250, record_property
+        "five_day_forecast", reference, candidate, 250
     )

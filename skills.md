@@ -292,16 +292,17 @@ validated work, and review closures require evidence from the current branch.
 3. Assert identical output values **before interpreting timings**. Keep
    malformed inputs and compatibility checks in deterministic regression tests.
 4. Run multiple `timeit.repeat()` measurements and report median elapsed
-   time per batch plus the reference/candidate ratio. The test stores timings
-   as JUnit properties and prints them when capture is disabled:
+   time per batch plus the reference/candidate ratio. The dedicated CI step
+   runs these benchmarks **without coverage instrumentation** and prints
+   the figures in the job log. Run the same command locally:
 
    ```bash
    python -m pytest -q -s tests/test_wind_azimuth_timeit.py
    ```
 
 5. Keep benchmark results **informational** in standard CI; CPU contention,
-   profiling/coverage overhead, Python versions and different runners can
-   change the ratio. Do not fail CI because one implementation is slower on a
+   coverage instrumentation in the regular suite, Python versions and
+   different runners can change the ratio. Do not fail CI because one implementation is slower on a
    single noisy measurement.
 6. Treat helper-specific speedups as helper-specific. The actual production
    path may normalize wind directions before calling the helper; only a
