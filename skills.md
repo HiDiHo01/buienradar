@@ -375,3 +375,35 @@ security, dependency, and coverage checks, but GitHub still reported
 `rebaseable: false`. A later bot commit also removed upstream CI/tests.
 The correct repair retains the last validated result tree and rebases it
 with an authorized, lease-protected single-parent commit.
+
+## 15. Benchmark targeted icon-condition extraction
+
+**When to use:** Optimizing weather-condition decoding from icon URLs in
+`__cond_from_image()`.
+
+1. Preserve the existing validation contract: return `None` for non-string
+   input and strings shorter than six characters, without raising.
+2. Use the two relevant positions (`-5` and `-6`) to extract the lowercase
+   condition code and detect repeated day/night markers. Verify uppercase
+   and mixed-case icon suffixes, unknown codes, and independent cache copies.
+3. Exercise both actual call sites, `__parse_loc_data()` and
+   `__parse_fc_data()`; a unit test for the helper alone does not establish
+   stable full-feed behavior.
+4. Use `tests/test_icon_conditions.py` with standard-library
+   `timeit.repeat()` to compare the former full-string lowercase lookup
+   against the proposed targeted conversion on the same fixed inputs.
+   Compare both direct helper calls and a complete synthetic
+   `parse_json_data()` operation with station and five-day forecast data.
+5. Assert identical parsed results before interpreting any timings. Run the
+   diagnostic comparison separately from coverage collection:
+
+   ```bash
+   python -m pytest -q -s tests/test_icon_conditions.py -k timeit
+   ```
+
+6. Report median elapsed times and baseline/candidate ratios. Keep
+   performance measurements informational in CI; runner contention,
+   interpreter versions, and workload composition can change them.
+   Do not claim an overall parser speedup from a helper-only microbenchmark.
+7. Preserve the latest `main` parser safeguards, quality workflows,
+   security audits, and historical regression coverage when rebasing.
