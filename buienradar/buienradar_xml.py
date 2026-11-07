@@ -91,6 +91,8 @@ _MMU_LOOKUP = [10 ** ((val - 109) / 32) for val in range(256)]
 
 def __to_int(val):
     """Convert val into an integer value."""
+    if val is None:
+        return 0
     try:
         return int(val)
     except (ValueError, TypeError):
@@ -99,10 +101,12 @@ def __to_int(val):
 
 def __to_float(val, digits):
     """Convert val into float with digits decimal."""
+    if val is None:
+        return 0.0
     try:
         return round(float(val), digits)
     except (ValueError, TypeError):
-        return float(0)
+        return 0.0
 
 
 def __to_float2(val):

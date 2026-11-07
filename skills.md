@@ -310,3 +310,68 @@ validated work, and review closures require evidence from the current branch.
 7. When publishing evidence, identify the Python version, OS, repeat count,
    batch size, reference revision and whether coverage was enabled. Do not
    treat previous or third-party measurements as independently verified data.
+
+## 13. Validate None fast paths in real parser call sites
+
+**When to use:** An input converter adds a short circuit for missing weather
+sensor values, such as `None`.
+
+1. Preserve the existing contracts: JSON `__to_upper(None)` returns `None`,
+   JSON/XML `__to_int(None)` returns `0`, and `__to_float(None, digits)`
+   returns a floating-point `0.0`. Verify other valid and malformed inputs.
+2. Test the actual JSON and XML `__parse_loc_data()` callers, which cache or
+   reference converter functions in `SENSOR_TYPES` or `_REGULAR_SENSOR_ITEMS`.
+   Patching only the function's module name can miss cached call references.
+3. For a performance claim, compare the original and modified converter
+   behaviors under `timeit.repeat()` with identical station payloads,
+   assert the parsed outputs agree, and print median timings. Run:
+
+   ```bash
+   python -m pytest -q -s tests/test_null_converters.py -k timeit
+   ```
+
+4. Keep the timing ratio informational and do not infer a full-feed speedup
+   from isolated `None` conversions. Real feeds contain both missing
+   and valid values, and runner noise changes the measured effect.
+5. During conflict resolution, start with the latest `main` tree and reapply
+   only the PR's intended change. Retain the existing tests, coverage
+   enforcement, security/dependency audits, and unrelated parser improvements.
+   Never resurrect obsolete commented-out code to resolve a stale review.
+
+## 14. Require rebaseable PRs before merge
+
+**When to use:** Every merge-readiness assessment, including when GitHub says
+`mergeable: true` but `rebaseable: false`.
+
+1. Read the live PR and base/head SHAs, compare the diff against the latest
+   `main`, review all unresolved threads, and check the distinct GitHub
+   `mergeable`, `rebaseable`, and `mergeable_state` fields.
+2. A merge commit can resolve conflicts and produce green CI while leaving
+   historical commits un-rebaseable. Never treat `mergeable: true` alone as
+   a sufficient merge-ready verdict.
+3. Inspect any new commits made after the last validation. Bots can restore an
+   older snapshot and unintentionally delete the current parser, `skills.md`,
+   CI workflows, quality/security rules, or regression tests. Reconcile
+   genuinely new work; restore the latest *validated* tree when a commit only
+   reverts these unrelated improvements.
+4. If **explicitly authorized** to rewrite a PR's history, build a
+   single-parent commit on the latest `main` that retains the complete
+   validated result tree and any necessary documentation updates. Record
+   the previous head, new parent, and final tree SHA for auditability.
+5. Fetch the remote base and head again immediately before updating. Use
+   force-with-lease against the exact expected old PR head SHA; abort on
+   a stale lease. Never force-push `main`, and never silently drop newly
+   contributed functionality.
+6. Confirm GitHub actually reports `rebaseable: true` and
+   `mergeable: true`, zero commits behind `main`, the intended narrow
+   diff, and no unresolved review conversations.
+7. Re-run the current, complete CI for the new head. Distinguish previous
+   success for an equivalent tree from successful current-head checks; only
+   recommend merging after the current required checks are green.
+
+**PR #14 lesson:** A two-parent conflict-resolution commit made the
+null-converter PR mergeable and passed all Linux/Windows Python 3.12–3.14,
+security, dependency, and coverage checks, but GitHub still reported
+`rebaseable: false`. A later bot commit also removed upstream CI/tests.
+The correct repair retains the last validated result tree and rebases it
+with an authorized, lease-protected single-parent commit.

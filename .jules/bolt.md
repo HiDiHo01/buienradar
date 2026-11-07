@@ -33,3 +33,7 @@
 ## 2026-10-23 - Pre-partitioning Configuration Items to Eliminate Loop Branching
 **Learning:** When iterating through a configuration mapping (such as `SENSOR_TYPES` with 21 entries) where only 1 or 2 keys require special logic (`CONDITION` and `STATIONNAME`), checking `if key == ...` in every loop iteration wastes CPU cycles on 19 non-special iterations. Pre-partitioning the mapping at module load into standard 1-to-1 mapped tuples and handling special keys directly outside the loop yields a ~15.5% speedup. Similarly, pre-filtering validation tuples at import time speeds up station validation checks (`__is_valid`) by 17% (and by ~65% for empty stations).
 **Action:** Pre-partition configuration mappings into homogenous tuples at import time instead of placing condition branches for minority special cases inside loops.
+
+## 2026-10-22 - Fast-path None Checks in Type Conversion Helpers
+**Learning:** Calling `int(None)` or `float(None)` raises `TypeError` and invokes exception handling. Jules reported an approximately 18x null-only helper microbenchmark gain from explicitly checking `None`; this does not demonstrate a comparable gain in normal feed processing.
+**Action:** Preserve converter return contracts, cover non-null inputs, and benchmark both JSON and XML station parsers. Report timing ratios as diagnostics, not CI gates.
