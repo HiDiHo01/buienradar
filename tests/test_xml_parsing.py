@@ -118,3 +118,61 @@ def test_xml_to_localdatetime() -> None:
     assert to_localdatetime(None) is None
     assert to_localdatetime("") is None
     assert to_localdatetime("invalid") is None
+
+
+def test_xml_parse_fc_data_full() -> None:
+    """Test __parse_fc_data directly for temperature reuse and all 5 forecast days."""
+    from buienradar.buienradar_xml import __parse_fc_data as parse_fc_data
+    from buienradar.constants import (
+        CONDITION,
+        DATETIME,
+        IMAGE,
+        MAX_TEMP,
+        MIN_TEMP,
+        RAIN,
+        RAIN_CHANCE,
+        SNOW,
+        SUN_CHANCE,
+        TEMPERATURE,
+        WINDFORCE,
+    )
+
+    fc_data = {
+        "dag-plus1": {
+            "icoon": {"@ID": "a", "#text": "https://example.invalid/a.png"},
+            "maxtemp": "21.5",
+            "mintemp": "11.2",
+            "kanszon": "70",
+            "kansregen": "10",
+            "maxmmregen": "0.5",
+            "sneeuwcms": "0",
+            "windkracht": "3",
+        },
+        "dag-plus2": {
+            "icoon": {"@ID": "b", "#text": "https://example.invalid/b.png"},
+            "maxtemp": "19.0",
+            "mintemp": "9.5",
+            "kanszon": "50",
+            "kansregen": "30",
+            "maxmmregen": "2.0",
+            "sneeuwcms": "0",
+            "windkracht": "4",
+        },
+    }
+
+    result = parse_fc_data(fc_data)
+    assert len(result) == 2
+
+    day1 = result[0]
+    assert day1[TEMPERATURE] == 21.5
+    assert day1[MAX_TEMP] == 21.5
+    assert day1[MIN_TEMP] == 11.2
+    assert day1[SUN_CHANCE] == 70
+    assert day1[RAIN_CHANCE] == 10
+    assert day1[RAIN] == 0.5
+    assert day1[SNOW] == 0.0
+    assert day1[WINDFORCE] == 3
+    assert day1[CONDITION] is not None
+    assert day1[CONDITION]["condcode"] == "a"
+    assert day1[CONDITION][IMAGE] == "https://example.invalid/a.png"
+    assert isinstance(day1[DATETIME], datetime)

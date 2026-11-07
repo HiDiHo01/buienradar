@@ -194,6 +194,12 @@ _VALIDATION_SENSORS = tuple(
     for key, (value, func) in SENSOR_TYPES.items()
     if key not in (CONDITION, STATIONNAME, MEASURED) and func is not None
 )
+  
+# Performance optimization: pre-compute day section keys and day timedeltas
+# for fast iteration in __parse_fc_data without per-call string formatting and allocations.
+_DAY_SECTIONS_AND_DELTAS = tuple(
+    (__BRDAYFC % i, timedelta(days=i)) for i in range(1, 6)
+)
 
 
 log = logging.getLogger(__name__)
@@ -435,7 +441,8 @@ def __parse_loc_data(loc_data, result):
                     FORECAST: [],
                     PRECIPITATION_FORECAST: None}
 
-    for key, [value, func] in SENSOR_TYPES.items():
+    # Iterate over active SENSOR_TYPES to preserve dynamic runtime customization
+    for key, (value, func) in SENSOR_TYPES.items():
         result[DATA][key] = None
         try:
             sens_data = loc_data[value]
@@ -445,18 +452,16 @@ def __parse_loc_data(loc_data, result):
                 result[DATA][CONDITION] = condition_from_code(code)
                 if result[DATA][CONDITION]:
                     result[DATA][CONDITION][IMAGE] = sens_data[__BRTEXT]
+            elif key == STATIONNAME:
+                name = sens_data[__BRTEXT].replace("Meetstation", "").strip()
+                name += " (%s)" % loc_data[__BRSTATIONCODE]
+                result[DATA][key] = name
             else:
-                if key == STATIONNAME:
-                    name = sens_data[__BRTEXT].replace("Meetstation", "")
-                    name = name.strip()
-                    name += " (%s)" % loc_data[__BRSTATIONCODE]
-                    result[DATA][key] = name
+                # update all other data
+                if func is not None:
+                    result[DATA][key] = func(sens_data)
                 else:
-                    # update all other data
-                    if func is not None:
-                        result[DATA][key] = func(sens_data)
-                    else:
-                        result[DATA][key] = sens_data
+                    result[DATA][key] = sens_data
         except KeyError:
             if result[MESSAGE] is None:
                 result[MESSAGE] = "Missing key(s) in br data: "
@@ -475,18 +480,25 @@ def __parse_fc_data(fc_data):
                                                   minute=0,
                                                   second=0,
                                                   microsecond=0)
-    for daycnt in range(1, 6):
-        daysection = __BRDAYFC % daycnt
+    # Performance optimization:
+    # 1. Use pre-computed `_DAY_SECTIONS_AND_DELTAS` to eliminate string formatting
+    #    and timedelta allocation inside the forecast loop.
+    # 2. Parse `max_temp` once and reuse it for both TEMPERATURE and MAX_TEMP.
+    for daysection, daydelta in _DAY_SECTIONS_AND_DELTAS:
         if daysection in fc_data:
             tmpsect = fc_data[daysection]
-            # add daycnt days
-            fcdatetime = base_dt + timedelta(days=daycnt)
+            fcdatetime = base_dt + daydelta
             code = tmpsect.get(__BRICOON, []).get(__BRID).lower()
+            cond = condition_from_code(code)
+            if cond is not None:
+                cond[IMAGE] = tmpsect.get(__BRICOON, []).get(__BRTEXT)
+
+            max_temp = __get_float(tmpsect, __BRMAXTEMP)
             fcdata = {
-                CONDITION: condition_from_code(code),
-                TEMPERATURE: __get_float(tmpsect, __BRMAXTEMP),
+                CONDITION: cond,
+                TEMPERATURE: max_temp,
                 MIN_TEMP: __get_float(tmpsect, __BRMINTEMP),
-                MAX_TEMP: __get_float(tmpsect, __BRMAXTEMP),
+                MAX_TEMP: max_temp,
                 SUN_CHANCE: __get_int(tmpsect, __BRKANSZON),
                 RAIN_CHANCE: __get_int(tmpsect, __BRKANSREGEN),
                 RAIN: __get_float(tmpsect, __BRMAXMMREGEN),
@@ -494,9 +506,6 @@ def __parse_fc_data(fc_data):
                 WINDFORCE: __get_int(tmpsect, __BRWINDKRACHT),
                 DATETIME: fcdatetime,
             }
-            if fcdata[CONDITION] is not None:
-                fcdata[CONDITION][IMAGE] = tmpsect.get(__BRICOON, []).get(__BRTEXT)
-
             fc.append(fcdata)
     return fc
 

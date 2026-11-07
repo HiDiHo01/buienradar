@@ -290,22 +290,6 @@ SENSOR_TYPES = {
 # Pre-computed items tuple for fast iteration in __parse_loc_data
 _SENSOR_TYPES_ITEMS = tuple(SENSOR_TYPES.items())
 
-# Performance optimization: pre-partition regular 1-to-1 sensor mappings from
-# special-case keys (CONDITION and STATIONNAME) to avoid redundant branch checks in loops.
-_REGULAR_SENSOR_ITEMS = tuple(
-    (key, value, func)
-    for key, (value, func) in _SENSOR_TYPES_ITEMS
-    if key not in (CONDITION, STATIONNAME)
-)
-
-# Performance optimization: precompute validation sensors (non-null conversion funcs,
-# excluding CONDITION, STATIONNAME, and MEASURED) to avoid branch checks per station check.
-_VALIDATION_SENSORS = tuple(
-    (value, func)
-    for key, (value, func) in SENSOR_TYPES.items()
-    if key not in (CONDITION, STATIONNAME, MEASURED) and func is not None
-)
-
 
 log = logging.getLogger(__name__)
 
@@ -456,41 +440,35 @@ def __parse_ws_data(jsondata, latitude=52.091579, longitude=5.119734):
 
 def __parse_loc_data(loc_data, result):
     """Parse the json data from selected weatherstation."""
-    data = {ATTRIBUTION: ATTRIBUTION_INFO,
-            FORECAST: [],
-            PRECIPITATION_FORECAST: None}
-    result[DATA] = data
+    result[DATA] = {ATTRIBUTION: ATTRIBUTION_INFO,
+                    FORECAST: [],
+                    PRECIPITATION_FORECAST: None}
 
     # Performance optimization:
-    # Handle special cases (CONDITION and STATIONNAME) directly instead of
-    # checking branches on every loop iteration over 21 sensor types.
-    try:
-        icon_url = loc_data[__ICONURL]
-        cond = __cond_from_image(icon_url)
-        if cond:
-            cond[IMAGE] = icon_url
-        data[CONDITION] = cond
-    except KeyError:
-        data[CONDITION] = None
-        log.debug("Data element with key='%s' not loaded from br data!", CONDITION)
-
-    try:
-        data[STATIONNAME] = __getStationName(loc_data[__STATIONNAME],
-                                             loc_data[__STATIONID])
-    except KeyError:
-        data[STATIONNAME] = None
-        log.debug("Data element with key='%s' not loaded from br data!", STATIONNAME)
-
-    # Fast iteration over pre-partitioned 1-to-1 mapped sensor items
-    for key, value, func in _REGULAR_SENSOR_ITEMS:
+    # Use pre-computed items tuple `_SENSOR_TYPES_ITEMS` and evaluate key special cases
+    # (CONDITION and STATIONNAME) before attempting `loc_data[value]` lookup to avoid
+    # redundant dictionary access and KeyError exception handling overhead.
+    for key, (value, func) in _SENSOR_TYPES_ITEMS:
+        result[DATA][key] = None
         try:
+            if key == CONDITION:
+                icon_url = loc_data[__ICONURL]
+                result[DATA][CONDITION] = __cond_from_image(icon_url)
+                if result[DATA][CONDITION]:
+                    result[DATA][CONDITION][IMAGE] = icon_url
+                continue
+            if key == STATIONNAME:
+                result[DATA][key] = __getStationName(loc_data[__STATIONNAME],
+                                                     loc_data[__STATIONID])
+                continue
+
             sens_data = loc_data[value]
+            # update all other data:
             if func is not None:
-                data[key] = func(sens_data)
+                result[DATA][key] = func(sens_data)
             else:
-                data[key] = sens_data
+                result[DATA][key] = sens_data
         except KeyError:
-            data[key] = None
             log.debug("Data element with key='%s' "
                       "not loaded from br data!", key)
     result[SUCCESS] = True
@@ -819,14 +797,14 @@ def __get_ws_distance(wstation, latitude, longitude):
 
 def __is_valid(loc_data):
     """Determine if this can be valid data (not all 0's)."""
-    # Performance optimization: iterate over precomputed _VALIDATION_SENSORS tuple
-    # to avoid per-item key exclusion and null-function checks.
-    for value, func in _VALIDATION_SENSORS:
-        sens_data = loc_data.get(value)
-        if sens_data is not None:
-            val = func(sens_data)
-            if val is not None and val != 0 and val != "":
-                return True
+    for key, [value, func] in SENSOR_TYPES.items():
+        if key != CONDITION and key != STATIONNAME and key != MEASURED:
+            if func is not None:
+                sens_data = loc_data.get(value)
+                if sens_data is not None:
+                    val = func(sens_data)
+                    if val is not None and val != 0 and val != "":
+                        return True
 
 
 def __getStationName(name, id):
