@@ -66,7 +66,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     usexml = bool(args["--usexml"])
 
-    result = get_data(latitude, longitude, usexml)
+    result = get_data(latitude, longitude, api="xml" if usexml else "json")
 
     if not result.get(SUCCESS):
         logger.error(
