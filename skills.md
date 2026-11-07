@@ -487,3 +487,36 @@ station validation loop.
 7. Rebase onto current `main` with a lease-protected branch update when
    authorized. Preserve all later parser and security improvements,
    regression tests, and existing CI checks.
+
+## 18. Adopt Pylint as a required CI gate without losing existing coverage
+
+**When to use:** Introducing Pylint to an existing repository with established
+Ruff, testing, security and coverage workflows.
+
+1. Pin a Python-compatible Pylint release in
+   `.github/requirements-ci.txt`; install the normal test requirements too,
+   so static analysis can resolve the same dependencies as the code.
+2. Start with Pylint **error/fatal** diagnostics on both the production
+   package and the test modules. This adds meaningful analysis without
+   introducing unrelated legacy formatting and refactor failures.
+3. The optional CLI-only `docopt` import is not listed in the parser-test
+   requirements. Until that dependency is formally represented, exclude
+   the `import-error` diagnostic, **not** the entire Pylint job. Retain
+   the remaining error/fatal diagnostics as a failure condition.
+4. Execute locally with Python 3.14:
+
+   ```bash
+   python -m pip install -r .github/requirements-ci.txt -r requirements_test.txt
+   python -m pip check
+   python -m pylint --errors-only --disable=import-error buienradar test_json_parsing.py tests/
+   ```
+
+5. Add a dedicated `pylint` job to the unified `.github/workflows/ci.yml`.
+   Require that job in `CI result`; preserve Ruff, branch coverage,
+   dependency audits, workflow security and all six Python/OS test jobs.
+6. Diagnose failures from the **actual** workflow logs, fix new production
+   defects, and scope any suppression to a substantiated false positive.
+   Never use `|| true`, `continue-on-error`, or reduce existing quality
+   requirements to make the status green.
+7. Check that the new PR remains cleanly rebaseable and mergeable on `main`,
+   then confirm the new Pylint job and entire CI pipeline succeed.
