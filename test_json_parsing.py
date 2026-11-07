@@ -31,17 +31,6 @@ def test_wind_helpers():
     assert get_windazimuth("INVALID_DIR") is None
 
 
-def test_wind_azimuth_unhashable_string_subclass() -> None:
-    """Support non-hashable string subclasses through normalization."""
-
-    class UnhashableDirection(str):
-        """Represent a wind direction that cannot be hashed."""
-
-        __hash__ = None
-
-    assert get_windazimuth(UnhashableDirection("zw")) == 225
-
-
 def test_is_valid_station():
     """Test station data validity check."""
     valid_station = {

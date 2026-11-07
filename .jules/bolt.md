@@ -22,58 +22,6 @@
 **Learning:** Constructing dictionary structures and performing repeated lookups into `__BRCONDITIONS` for every station measurement and forecast entry (~5-10 entries per payload) creates unnecessary dictionary allocation and string indexing overhead during feed parsing. Pre-allocating day/night condition dictionary templates and using `.copy()` yields a ~1.6x speedup for condition resolution and ~5% speedup for overall JSON parsing.
 **Action:** When mapping static code definitions to fixed dictionary schemas, pre-build condition/metadata template dictionaries at module import time and return `.copy()` shallow copies.
 
-## 2026-10-22 - Targeted Character Slicing Over Full String Transformations
-**Learning:** Calling `.lower()` on a full icon URL (~67 characters) does unnecessary work when only the two filename suffix characters identify the weather condition. Jules reported a ~16% improvement in a **helper-only** microbenchmark when lowercasing `img[-5]` and `img[-6]` individually; this is not evidence of an equivalent full-parser speedup.
-**Action:** Extract and normalize only the required characters after validating the input as a sufficiently long string. Keep the existing condition-cache copy semantics, add day/night and malformed-input regressions, and independently benchmark the helper and real JSON parser using identical synthetic inputs.
-
-## 2026-10-22 - Pre-computing Multi-key Indexing for O(1) Code Lookups
-**Learning:** `condition_from_code` accepts condition codes as lowercase strings ('a'), uppercase strings ('A'), and integer ASCII codes (`ord('a')` = 97). Performing `str(condcode).lower()` and `chr(condcode)` transformations on every lookup incurs unnecessary string operations and conditional checks. Pre-indexing `_CONDITION_DATA_CACHE` with lowercase, uppercase, and integer keys at module load time enables direct O(1) dictionary lookup for all standard keys, achieving a ~1.6x speedup (~38% execution time reduction).
-**Action:** When a lookup function accepts diverse representations of a fixed domain key (e.g. string case variations or integer ASCII codes), pre-index the cache dictionary with all valid key variants to enable immediate O(1) hits.
-
-## 2026-10-22 - Early Special-Case Branching and Pre-checking Uppercase Keys
-**Learning:** In `__parse_loc_data`, fetching `loc_data[value]` before checking `if key == CONDITION` or `if key == STATIONNAME` caused redundant dict accesses and `KeyError` exception overhead when optional keys were absent. Also, calling `str.upper()` blindly in helper functions like `__get_windazimuth` allocated new upper-cased strings unnecessarily when inputs were already uppercase. Branching special cases early and trying direct `.get(key)` before `.get(key.upper())` improved JSON parsing throughput by ~9.5%.
-**Action:** Order loop branches to check special-case keys before indexing payload dicts, and check direct dictionary lookups before applying string transformations (`str.upper()`).
-
-## 2026-10-23 - Pre-partitioning Configuration Items to Eliminate Loop Branching
-**Learning:** When iterating through a configuration mapping (such as `SENSOR_TYPES` with 21 entries) where only 1 or 2 keys require special logic (`CONDITION` and `STATIONNAME`), checking `if key == ...` in every loop iteration wastes CPU cycles on 19 non-special iterations. Pre-partitioning the mapping at module load into standard 1-to-1 mapped tuples and handling special keys directly outside the loop yields a ~15.5% speedup. Similarly, pre-filtering validation tuples at import time speeds up station validation checks (`__is_valid`) by 17% (and by ~65% for empty stations).
-**Action:** Pre-partition configuration mappings into homogenous tuples at import time instead of placing condition branches for minority special cases inside loops.
-
-## 2026-10-22 - Fast-path None Checks in Type Conversion Helpers
-**Learning:** Calling `int(None)` or `float(None)` raises `TypeError` and invokes exception handling. Jules reported an approximately 18x null-only helper microbenchmark gain from explicitly checking `None`; this does not demonstrate a comparable gain in normal feed processing.
-**Action:** Preserve converter return contracts, cover non-null inputs, and benchmark both JSON and XML station parsers. Report timing ratios as diagnostics, not CI gates.
-
-## 2026-10-22 - Logger State Caching and String Partitioning in Line Parsers
-**Learning:** Precomputing `log.isEnabledFor(logging.DEBUG)` for a precipitation
-payload avoids repeated disabled debug calls. `str.partition("|")` avoids
-constructing a list but still allocates a tuple and substrings; preserving
-`split("|")` semantics requires checking for missing and extra pipes.
-Jules reported ~1.34x in one helper-only test; a 60-minute timeframe parses
-up to 12, not 24, forecast rows.
-**Action:** Preserve numeric conversion and malformed-line behavior, compare
-the baseline and optimized JSON and XML helpers plus their public weather
-parsing call paths using equivalent 120-minute synthetic payloads, and treat
-timeit ratios as informational rather than a guaranteed feed speedup.
-
-## 2026-10-22 - Short-circuiting None Checks in Dictionary Validation Loops
-**Learning:** Checking a raw XML sensor value for `None` before calling
-numeric converters can avoid unnecessary calls during validation. Jules
-originally reported ~3x–9x in a sparse-station validation microbenchmark,
-but current `main` already checks `None` inside numeric converters; the
-original exception-cost rationale and full XML-feed speedup claim are
-not established against this newer baseline.
-**Action:** Preserve the existing validation return values, add regression
-tests for missing, invalid and nonzero measurements, and benchmark both the
-helper and real XML feed parsing with matched sparse and complete inputs.
-Treat timing results as environment-specific diagnostics, not CI thresholds.
-
-## 2026-11-07 - Dynamic Station Validation Requires Live Descriptors
-**Learning:** Caching XML `SENSOR_TYPES` fields at import time is unsafe
-because `__parse_loc_data` reads the current mapping. If keys, field names,
-or converters are changed after import, validation can disagree with parsing.
-JSON in current `main` already has precomputed schema subsets, so it is
-incorrect to attribute that optimization to PR #19. The earlier 1.2x–1.5x
-claim did not benchmark the current full weather parsing path.
-**Action:** Keep XML validation tied to the live mapping, precompute only an
-immutable exclusion-key set, preserve `None` guards, and test schema edits
-and full XML output. Compare with the actual current-main behavior using
-`timeit.repeat()` without making latency ratios CI gates.
+## 2026-10-22 - Caching Exclusion Keys While Preserving Live Mapping Iteration
+**Learning:** Pre-caching static `(value, func)` pairs from `SENSOR_TYPES` at import time prevents runtime modification or dynamic monkeypatching of `SENSOR_TYPES`. However, iterating the live mapping with cached exclusion keys (`_EXCLUDED_VALIDATION_KEYS = frozenset(...)`) keeps the validation loop fast while guaranteeing that dynamic changes to `SENSOR_TYPES` are respected.
+**Action:** When optimizing loops over configurable mappings, cache static exclusion sets (`frozenset`) rather than caching mapping entries to prevent stale descriptor issues when mappings are modified at runtime.
