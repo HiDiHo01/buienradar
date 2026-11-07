@@ -727,9 +727,9 @@ def __cond_from_image(img):
     #  we cannot determine the condition.
     if not isinstance(img, str) or len(img) < 6:
         return None
-    image = img.lower()
-    code = image[-5:-4]
-    night = (image[-6:-5] == code)
+    # Only the two suffix characters are used for the condition lookup.
+    code = img[-5].lower()
+    night = img[-6].lower() == code
     cache = _COND_CACHE_NIGHT if night else _COND_CACHE_DAY
     cond = cache.get(code)
     return cond.copy() if cond is not None else None
