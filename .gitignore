@@ -3,3 +3,12 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+coverage.md
+coverage-data/
+htmlcov/
+junit.xml
+dependency-audit.json
+.ruff_cache/
