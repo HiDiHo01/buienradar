@@ -669,6 +669,8 @@ def __parse_precipfc_data(data, timeframe):
     # Cache the logger's DEBUG status once per payload.
     # partition() avoids a list allocation while preserving delimiter validation.
     debug_enabled = log.isEnabledFor(logging.DEBUG)
+    # The 0..255 lookup is hot; avoid a repeated module-global lookup.
+    lookup = _MMU_LOOKUP
     for index in range(1, nrlines):
         line = lines[index]
         if debug_enabled:
@@ -695,9 +697,11 @@ def __parse_precipfc_data(data, timeframe):
         try:
             val_int = int(val_str)
             if 0 <= val_int <= 255:
-                mmu = _MMU_LOOKUP[val_int]
-            else:
-                mmu = 10 ** ((val_int - 109) / 32)
+                # The common integer path is complete; avoid the fallback.
+                totalrain += lookup[val_int]
+                numberoflines += 1
+                continue
+            mmu = 10 ** ((val_int - 109) / 32)
         except ValueError:
             try:
                 val_float = float(val_str.replace(',', '.'))
