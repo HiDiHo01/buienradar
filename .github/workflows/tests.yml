@@ -58,3 +58,10 @@ jobs:
           -ra
           test_json_parsing.py
           tests/
+
+      - name: Compare XML forecast parser timings (informational)
+        # Re-run only timing tests with stdout visible; assertions remain mandatory,
+        # but performance ratios are not thresholded.
+        run: >-
+          python -m pytest -q -s
+          tests/test_xml_forecast_optimization.py -k timeit
