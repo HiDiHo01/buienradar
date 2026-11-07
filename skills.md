@@ -562,3 +562,32 @@ redundant accumulation or control flow in JSON/XML forecast parsing.
 7. Keep all existing Ruff, Pylint, security/dependency audits, coverage
    checks and six-version/platform test jobs; verify both GitHub
    `mergeable=true` and `rebaseable=true` after the authorized rebase.
+
+## 20. Do not cache mutable validation schemas independently
+
+**When to use:** Optimizing station validity when `SENSOR_TYPES`
+descriptors can be replaced, extended or mutated by parser tests or consumers.
+
+1. Both `__is_valid()` and `__parse_loc_data()` must inspect **the same
+   active schema**. A tuple of converter descriptors built at import time
+   is not synchronized with a mutable dict; new fields can be rejected before
+   parsing, and replaced converters can produce incorrect validations.
+2. The JSON parser in the current base already caches schema subsets for
+   both validation and parsing. Do not duplicate that functionality in a
+   later PR or claim the baseline is uncached. Treat broader dynamic JSON
+   schema changes as an independent compatibility decision.
+3. For XML, use the live `SENSOR_TYPES.items()` and precompute only the
+   **immutable excluded-key set**, not field names or converter functions.
+   Keep the existing `sens_data is not None` guard to avoid needless
+   converter invocations and preserve previous return semantics.
+4. Test replacement of `SENSOR_TYPES`, in-place additions, changed source
+   field names and converters, removals, and a full `parse_xml_data()`
+   operation whose only nonzero sensor is dynamically configured.
+5. Use `tests/test_xml_station_validation.py` to compare the old and new
+   validator **and** full two-station XML processing via `timeit.repeat()`
+   with identical synthetic input and output parity assertions. Timing
+   values are informational; do not gate CI on a ratio or infer a general
+   1.2x–1.5x speedup from obsolete helper-only measurements.
+6. Retain the latest `main` improvements and all Ruff, Pylint, security,
+   dependency, matrix and combined-coverage jobs. Verify clean rebaseability
+   and all open review conversations before recommending merge.

@@ -416,14 +416,19 @@ def __parse_precipfc_data(data, timeframe) -> dict[str, object]:
     return result
 
 
+_NON_VALIDATION_KEYS = frozenset((CONDITION, STATIONNAME, MEASURED))
+
+
 def __is_valid(loc_data):
-    """Determine if this can be valid data (not all 0's)."""
-    for key, [value, func] in SENSOR_TYPES.items():
-        if (key != CONDITION and key != STATIONNAME and key != MEASURED):
-            if (func is not None):
-                sens_data = loc_data.get(value)
-                if sens_data is not None and func(sens_data) != 0:
-                    return True
+    """Check live sensor descriptors without rejecting newly configured fields."""
+    # SENSOR_TYPES is mutable and also consumed by __parse_loc_data.
+    # Never cache converter descriptors separately from the current mapping.
+    for key, (value, func) in SENSOR_TYPES.items():
+        if key in _NON_VALIDATION_KEYS or func is None:
+            continue
+        sens_data = loc_data.get(value)
+        if sens_data is not None and func(sens_data) != 0:
+            return True
 
 
 def __parse_loc_data(loc_data, result):

@@ -65,3 +65,15 @@ not established against this newer baseline.
 tests for missing, invalid and nonzero measurements, and benchmark both the
 helper and real XML feed parsing with matched sparse and complete inputs.
 Treat timing results as environment-specific diagnostics, not CI thresholds.
+
+## 2026-11-07 - Dynamic Station Validation Requires Live Descriptors
+**Learning:** Caching XML `SENSOR_TYPES` fields at import time is unsafe
+because `__parse_loc_data` reads the current mapping. If keys, field names,
+or converters are changed after import, validation can disagree with parsing.
+JSON in current `main` already has precomputed schema subsets, so it is
+incorrect to attribute that optimization to PR #19. The earlier 1.2x–1.5x
+claim did not benchmark the current full weather parsing path.
+**Action:** Keep XML validation tied to the live mapping, precompute only an
+immutable exclusion-key set, preserve `None` guards, and test schema edits
+and full XML output. Compare with the actual current-main behavior using
+`timeit.repeat()` without making latency ratios CI gates.
