@@ -91,8 +91,6 @@ _MMU_LOOKUP = [10 ** ((val - 109) / 32) for val in range(256)]
 
 def __to_int(val):
     """Convert val into an integer value."""
-    if val is None:
-        return 0
     try:
         return int(val)
     except (ValueError, TypeError):
@@ -101,12 +99,10 @@ def __to_int(val):
 
 def __to_float(val, digits):
     """Convert val into float with digits decimal."""
-    if val is None:
-        return 0.0
     try:
         return round(float(val), digits)
     except (ValueError, TypeError):
-        return 0.0
+        return float(0)
 
 
 def __to_float2(val):
@@ -189,7 +185,6 @@ SENSOR_TYPES = {
     WINDAZIMUTH: ['windrichtingGR', __to_int],
     WINDGUST: ['windstotenMS', __to_float2],
 }
-
 
 log = logging.getLogger(__name__)
 
@@ -359,19 +354,14 @@ def __parse_precipfc_data(data, timeframe) -> dict[str, object]:
     # Performance optimization:
     # Use precomputed lookup table `_MMU_LOOKUP` for integer values 0..255
     # (formula: 10**((val-109)/32)) to avoid expensive exponentiation per line.
-    # Cache the logger's DEBUG status once per payload.
-    # partition() avoids a list allocation while preserving delimiter validation.
-    debug_enabled = log.isEnabledFor(logging.DEBUG)
-    # The 0..255 lookup is hot; avoid a repeated module-global lookup.
-    lookup = _MMU_LOOKUP
     for index in range(1, nrlines):
         line = lines[index]
-        if debug_enabled:
-            log.debug("__parse_precipfc_data: line: %s", line)
-        val_str, separator, remainder = line.partition("|")
-        if not separator or "|" in remainder:
+        log.debug("__parse_precipfc_data: line: %s", line)
+        parts = line.split("|")
+        if len(parts) != 2:
             log.warning("Skipping malformed precipitation line: %r", line)
             continue
+        val_str = parts[0]
         # See buienradar documentation for this api, attribution
         # https://www.buienradar.nl/overbuienradar/gratis-weerdata
         #
@@ -390,11 +380,9 @@ def __parse_precipfc_data(data, timeframe) -> dict[str, object]:
         try:
             val_int = int(val_str)
             if 0 <= val_int <= 255:
-                # The common integer path is complete; avoid the fallback.
-                totalrain += lookup[val_int]
-                numberoflines += 1
-                continue
-            mmu = 10 ** ((val_int - 109) / 32)
+                mmu = _MMU_LOOKUP[val_int]
+            else:
+                mmu = 10 ** ((val_int - 109) / 32)
         except ValueError:
             try:
                 val_float = float(val_str.replace(',', '.'))
@@ -416,19 +404,18 @@ def __parse_precipfc_data(data, timeframe) -> dict[str, object]:
     return result
 
 
-_NON_VALIDATION_KEYS = frozenset((CONDITION, STATIONNAME, MEASURED))
+# Cached exclusion keys for station validity checks
+_EXCLUDED_VALIDATION_KEYS = frozenset((CONDITION, STATIONNAME, MEASURED))
 
 
 def __is_valid(loc_data):
-    """Check live sensor descriptors without rejecting newly configured fields."""
-    # SENSOR_TYPES is mutable and also consumed by __parse_loc_data.
-    # Never cache converter descriptors separately from the current mapping.
-    for key, (value, func) in SENSOR_TYPES.items():
-        if key in _NON_VALIDATION_KEYS or func is None:
-            continue
-        sens_data = loc_data.get(value)
-        if sens_data is not None and func(sens_data) != 0:
-            return True
+    """Determine if this can be valid data (not all 0's)."""
+    for key, [value, func] in SENSOR_TYPES.items():
+        if key not in _EXCLUDED_VALIDATION_KEYS:
+            if func is not None:
+                sens_data = loc_data.get(value)
+                if func(sens_data) != 0:
+                    return True
 
 
 def __parse_loc_data(loc_data, result):

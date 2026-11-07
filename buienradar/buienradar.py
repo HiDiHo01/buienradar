@@ -40,23 +40,18 @@ class ConditionData(TypedDict):
     exact_nl: str
 
 
-# Performance optimization: precompute condition templates indexed by lowercase,
-# uppercase, and integer ASCII codes for direct O(1) condition_from_code lookups.
-_CONDITION_DATA_CACHE: dict[str | int, ConditionData] = {}
-for code, val in __BRCONDITIONS.items():
-    if isinstance(val, (list, tuple)) and len(val) >= 4:
-        cdata = ConditionData(
-            condcode=code,
-            condition=val[0],
-            detailed=val[1],
-            exact=val[2],
-            exact_nl=val[3],
-        )
-        code_str = str(code).lower()
-        _CONDITION_DATA_CACHE[code_str] = cdata
-        _CONDITION_DATA_CACHE[code_str.upper()] = cdata
-        if len(code_str) == 1:
-            _CONDITION_DATA_CACHE[ord(code_str)] = cdata
+# Precomputed condition data templates for fast O(1) lookups
+_CONDITION_DATA_CACHE: dict[str, ConditionData] = {
+    str(code).lower(): ConditionData(
+        condcode=code,
+        condition=val[0],
+        detailed=val[1],
+        exact=val[2],
+        exact_nl=val[3],
+    )
+    for code, val in __BRCONDITIONS.items()
+    if isinstance(val, (list, tuple)) and len(val) >= 4
+}
 
 
 def _validate_coordinates(latitude: float, longitude: float) -> None:
@@ -177,23 +172,17 @@ def condition_from_code(condcode: int | str) -> ConditionData | None:
     if not isinstance(condcode, (int, str)):
         raise TypeError("Condition code must be an integer or string")
 
-    # Direct lookup is safe for built-in keys; subclasses can be unhashable.
-    if type(condcode) in (str, int):
-        cond = _CONDITION_DATA_CACHE.get(condcode)
+    if isinstance(condcode, int):
+        try:
+            code_key = chr(condcode).lower()
+        except (ValueError, OverflowError):
+            code_key = ""
     else:
-        cond = None
-    if cond is None:
-        if isinstance(condcode, int):
-            try:
-                code_key = chr(condcode).lower()
-            except (ValueError, OverflowError):
-                code_key = ""
-        else:
-            code_key = str(condcode).lower()
+        code_key = str(condcode).lower()
 
-        cond = _CONDITION_DATA_CACHE.get(code_key)
-        if cond is None and isinstance(condcode, int):
-            cond = _CONDITION_DATA_CACHE.get(str(condcode))
+    cond = _CONDITION_DATA_CACHE.get(code_key)
+    if cond is None and isinstance(condcode, int):
+        cond = _CONDITION_DATA_CACHE.get(str(condcode))
 
     if cond is None:
         return None

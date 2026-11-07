@@ -123,8 +123,6 @@ __DAY = "day"
 
 def __to_upper(val):
     """Convert val into ucase value."""
-    if val is None:
-        return None
     try:
         return val.upper()
     except (AttributeError, ValueError, TypeError):
@@ -133,8 +131,6 @@ def __to_upper(val):
 
 def __to_int(val):
     """Convert val into an integer value."""
-    if val is None:
-        return 0
     try:
         return int(val)
     except (AttributeError, ValueError, TypeError):
@@ -143,12 +139,10 @@ def __to_int(val):
 
 def __to_float(val, digits):
     """Convert val into float with digits decimal."""
-    if val is None:
-        return 0.0
     try:
         return round(float(val), digits)
     except (AttributeError, ValueError, TypeError):
-        return 0.0
+        return float(0)
 
 
 def __to_float2(val):
@@ -292,25 +286,6 @@ SENSOR_TYPES = {
     WINDAZIMUTH: ['winddirectiondegrees', __to_int],
     WINDGUST: ['windgusts', __to_float2],
 }
-
-# Pre-computed items tuple for fast iteration in __parse_loc_data
-_SENSOR_TYPES_ITEMS = tuple(SENSOR_TYPES.items())
-
-# Performance optimization: pre-partition regular 1-to-1 sensor mappings from
-# special-case keys (CONDITION and STATIONNAME) to avoid redundant branch checks in loops.
-_REGULAR_SENSOR_ITEMS = tuple(
-    (key, value, func)
-    for key, (value, func) in _SENSOR_TYPES_ITEMS
-    if key not in (CONDITION, STATIONNAME)
-)
-
-# Performance optimization: precompute validation sensors (non-null conversion funcs,
-# excluding CONDITION, STATIONNAME, and MEASURED) to avoid branch checks per station check.
-_VALIDATION_SENSORS = tuple(
-    (value, func)
-    for key, (value, func) in SENSOR_TYPES.items()
-    if key not in (CONDITION, STATIONNAME, MEASURED) and func is not None
-)
 
 
 log = logging.getLogger(__name__)
@@ -462,41 +437,40 @@ def __parse_ws_data(jsondata, latitude=52.091579, longitude=5.119734):
 
 def __parse_loc_data(loc_data, result):
     """Parse the json data from selected weatherstation."""
-    data = {ATTRIBUTION: ATTRIBUTION_INFO,
-            FORECAST: [],
-            PRECIPITATION_FORECAST: None}
-    result[DATA] = data
+    result[DATA] = {ATTRIBUTION: ATTRIBUTION_INFO,
+                    FORECAST: [],
+                    PRECIPITATION_FORECAST: None}
 
-    # Performance optimization:
-    # Handle special cases (CONDITION and STATIONNAME) directly instead of
-    # checking branches on every loop iteration over 21 sensor types.
-    try:
-        icon_url = loc_data[__ICONURL]
-        cond = __cond_from_image(icon_url)
-        if cond:
-            cond[IMAGE] = icon_url
-        data[CONDITION] = cond
-    except KeyError:
-        data[CONDITION] = None
-        log.debug("Data element with key='%s' not loaded from br data!", CONDITION)
-
-    try:
-        data[STATIONNAME] = __getStationName(loc_data[__STATIONNAME],
-                                             loc_data[__STATIONID])
-    except KeyError:
-        data[STATIONNAME] = None
-        log.debug("Data element with key='%s' not loaded from br data!", STATIONNAME)
-
-    # Fast iteration over pre-partitioned 1-to-1 mapped sensor items
-    for key, value, func in _REGULAR_SENSOR_ITEMS:
+    for key, [value, func] in SENSOR_TYPES.items():
+        result[DATA][key] = None
         try:
             sens_data = loc_data[value]
+            if key == CONDITION:
+                # update weather symbol & status text
+                # desc = loc_data[__WEATHERDESCRIPTION]
+                # result[DATA][CONDITION] = __cond_from_desc(desc)
+                #
+                # test clear-->sunny vs clear-->clear-night
+                # loc_data[__ICONURL] =
+                #   "https://www.buienradar.nl/resources/images/icons/weather/30x30/a.png"
+                # loc_data[__ICONURL] =
+                #   "https://www.buienradar.nl/resources/images/icons/weather/30x30/aa.png"
+                result[DATA][CONDITION] = __cond_from_image(
+                    loc_data[__ICONURL])
+                if result[DATA][CONDITION]:
+                    result[DATA][CONDITION][IMAGE] = loc_data[__ICONURL]
+
+                continue
+            if key == STATIONNAME:
+                result[DATA][key] = __getStationName(loc_data[__STATIONNAME],
+                                                     loc_data[__STATIONID])
+                continue
+            # update all other data:
             if func is not None:
-                data[key] = func(sens_data)
+                result[DATA][key] = func(sens_data)
             else:
-                data[key] = sens_data
+                result[DATA][key] = sens_data
         except KeyError:
-            data[key] = None
             log.debug("Data element with key='%s' "
                       "not loaded from br data!", key)
     result[SUCCESS] = True
@@ -518,15 +492,13 @@ _WIND_DIRECTIONS = {
     'ESE': 112.5, 'SE': 135, 'SSE': 157.5, 'S': 180,
     'SSW': 202.5, 'SW': 225, 'WSW': 247.5,
 }
-# Pre-populate lowercase aliases for fast lookups of built-in strings.
-_WIND_DIRECTIONS.update({key.lower(): value for key, value in list(_WIND_DIRECTIONS.items())})
 
 
 def __parse_fc_data(fc_data):
     """Parse the forecast data from the json section."""
     fc = []
-    # Performance optimization: extract wind direction, icon URL, and wind force once per day,
-    # and reuse parsed floats for min/max temperature and rain to avoid redundant float conversions.
+    # Performance optimization: extract wind direction, icon URL, and wind force once per day
+    # to avoid redundant string upper() conversions and repeated dictionary lookups.
     for day in fc_data:
         wind_str = __get_str(day, __WINDDIRECTION)
         wind_dir_upper = wind_str.upper()
@@ -538,28 +510,17 @@ def __parse_fc_data(fc_data):
             cond[NIGHTTIME] = False
             cond[IMAGE] = icon_url
 
-        min_temp = __get_float(day, __MINTEMPERATUREMIN)
-        max_temp = __get_float(day, __MAXTEMPERATUREMAX)
-        min_rain = __get_optional_float(day, __MMRAINMIN)
-        max_rain = __get_optional_float(day, __MMRAINMAX)
-        if min_rain is None:
-            rain = max_rain
-        elif max_rain is None:
-            rain = min_rain
-        else:
-            rain = (min_rain + max_rain) / 2
-
         fcdata = {
             CONDITION: cond,
             TEMPERATURE: __get_avr_float(day, __MAXTEMPERATUREMIN,
                                          __MAXTEMPERATUREMAX),
-            MIN_TEMP: min_temp,
-            MAX_TEMP: max_temp,
+            MIN_TEMP: __get_float(day, __MINTEMPERATUREMIN),
+            MAX_TEMP: __get_float(day, __MAXTEMPERATUREMAX),
             SUN_CHANCE: __get_int(day, __SUNCHANCE),
             RAIN_CHANCE: __get_int(day, __RAINCHANCE),
-            RAIN: rain,
-            MIN_RAIN: min_rain if min_rain is not None else 0.0,  # new
-            MAX_RAIN: max_rain if max_rain is not None else 0.0,  # new
+            RAIN: __get_avr_float(day, __MMRAINMIN, __MMRAINMAX),
+            MIN_RAIN: __get_float(day, __MMRAINMIN),  # new
+            MAX_RAIN: __get_float(day, __MMRAINMAX),  # new
             # depricated / for compatibility:
             SNOW: 0,
             WINDFORCE: wind_force,
@@ -588,15 +549,8 @@ def __get_windazimuth(winddirection):
     if not winddirection:
         return None
 
-    # Use the fast, case-insensitive lookup for built-in strings only.
-    # Subclasses may be unhashable; normalize them for compatibility.
-    if type(winddirection) is str:
-        res = _WIND_DIRECTIONS.get(winddirection)
-        if res is not None:
-            return res
-
     try:
-        return _WIND_DIRECTIONS.get(winddirection.upper())
+        return _WIND_DIRECTIONS[winddirection.upper()]
     except (KeyError, AttributeError, TypeError):
         return None
 
@@ -615,14 +569,6 @@ def __get_float(section, name):
         return float(section[name])
     except (ValueError, TypeError, KeyError):
         return float(0)
-
-
-def __get_optional_float(section, name):
-    """Return a parsed float, or None when the forecast value is invalid."""
-    try:
-        return float(section[name])
-    except (ValueError, TypeError, KeyError):
-        return None
 
 
 def __get_avr_float(section, name1, name2):
@@ -666,19 +612,14 @@ def __parse_precipfc_data(data, timeframe):
     # Performance optimization:
     # Use precomputed lookup table `_MMU_LOOKUP` for integer values 0..255
     # (formula: 10**((val-109)/32)) to avoid expensive exponentiation per line.
-    # Cache the logger's DEBUG status once per payload.
-    # partition() avoids a list allocation while preserving delimiter validation.
-    debug_enabled = log.isEnabledFor(logging.DEBUG)
-    # The 0..255 lookup is hot; avoid a repeated module-global lookup.
-    lookup = _MMU_LOOKUP
     for index in range(1, nrlines):
         line = lines[index]
-        if debug_enabled:
-            log.debug("__parse_precipfc_data: line: %s", line)
-        val_str, separator, remainder = line.partition("|")
-        if not separator or "|" in remainder:
+        log.debug("__parse_precipfc_data: line: %s", line)
+        parts = line.split("|")
+        if len(parts) != 2:
             log.warning("Skipping malformed precipitation line: %r", line)
             continue
+        val_str = parts[0]
         # See buienradar documentation for this api, attribution
         # https://www.buienradar.nl/overbuienradar/gratis-weerdata
         #
@@ -697,11 +638,9 @@ def __parse_precipfc_data(data, timeframe):
         try:
             val_int = int(val_str)
             if 0 <= val_int <= 255:
-                # The common integer path is complete; avoid the fallback.
-                totalrain += lookup[val_int]
-                numberoflines += 1
-                continue
-            mmu = 10 ** ((val_int - 109) / 32)
+                mmu = _MMU_LOOKUP[val_int]
+            else:
+                mmu = 10 ** ((val_int - 109) / 32)
         except ValueError:
             try:
                 val_float = float(val_str.replace(',', '.'))
@@ -732,11 +671,11 @@ def __cond_from_image(img):
     # - http://somehost/somefolder/C.png
     #  if there is not url or the length is too small,
     #  we cannot determine the condition.
-    if not isinstance(img, str) or len(img) < 6:
+    if img is None or len(img) < 6:
         return None
-    # Only the two suffix characters are used for the condition lookup.
-    code = img[-5].lower()
-    night = img[-6].lower() == code
+    image = img.lower()
+    code = image[-5:-4]
+    night = (image[-6:-5] == code)
     cache = _COND_CACHE_NIGHT if night else _COND_CACHE_DAY
     cond = cache.get(code)
     return cond.copy() if cond is not None else None
@@ -834,14 +773,14 @@ def __get_ws_distance(wstation, latitude, longitude):
 
 def __is_valid(loc_data):
     """Determine if this can be valid data (not all 0's)."""
-    # Performance optimization: iterate over precomputed _VALIDATION_SENSORS tuple
-    # to avoid per-item key exclusion and null-function checks.
-    for value, func in _VALIDATION_SENSORS:
-        sens_data = loc_data.get(value)
-        if sens_data is not None:
-            val = func(sens_data)
-            if val is not None and val != 0 and val != "":
-                return True
+    for key, [value, func] in SENSOR_TYPES.items():
+        if key != CONDITION and key != STATIONNAME and key != MEASURED:
+            if func is not None:
+                sens_data = loc_data.get(value)
+                if sens_data is not None:
+                    val = func(sens_data)
+                    if val is not None and val != 0 and val != "":
+                        return True
 
 
 def __getStationName(name, id):
