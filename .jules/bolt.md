@@ -53,3 +53,15 @@ up to 12, not 24, forecast rows.
 the baseline and optimized JSON and XML helpers plus their public weather
 parsing call paths using equivalent 120-minute synthetic payloads, and treat
 timeit ratios as informational rather than a guaranteed feed speedup.
+
+## 2026-10-22 - Short-circuiting None Checks in Dictionary Validation Loops
+**Learning:** Checking a raw XML sensor value for `None` before calling
+numeric converters can avoid unnecessary calls during validation. Jules
+originally reported ~3x–9x in a sparse-station validation microbenchmark,
+but current `main` already checks `None` inside numeric converters; the
+original exception-cost rationale and full XML-feed speedup claim are
+not established against this newer baseline.
+**Action:** Preserve the existing validation return values, add regression
+tests for missing, invalid and nonzero measurements, and benchmark both the
+helper and real XML feed parsing with matched sparse and complete inputs.
+Treat timing results as environment-specific diagnostics, not CI thresholds.

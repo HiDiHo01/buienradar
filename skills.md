@@ -449,3 +449,41 @@ with an authorized, lease-protected single-parent commit.
    on timing or claim a fixed speedup without reproducible results in
    representative full weather parsing. Preserve current `main` code,
    parser tests, security audits, coverage baseline and CI when rebasing.
+
+## 17. Skip missing XML sensor conversions safely
+
+**When to use:** Reducing unnecessary work in the XML `__is_valid()`
+station validation loop.
+
+1. Confirm the existing numeric conversion contract. On current `main`,
+   `__to_int(None)` already returns `0` and `__to_float(None, digits)`
+   returns `0.0` **without raising**. The station-level `None` guard
+   saves converter calls, not necessarily exception handling.
+2. Preserve the return contract: `True` when any qualifying numeric
+   sensor converts to a nonzero value, and `None` for all-zero, missing,
+   `None`, malformed or metadata-only input. Do not replace `None`
+   with `False` without a separate compatibility decision.
+3. Test the normal input and rejection cases, verify converter calls are
+   skipped only for `None` or absent measurements, and ensure the loop
+   still evaluates nonzero values later in the sensor mapping.
+4. Test the real `parse_xml_data()` production path with **two weather
+   stations**: `xmltodict` returns a mapping instead of a list when the
+   station element appears only once. Exercise sparse and complete sensor
+   payloads and preserve output equality.
+5. Benchmark the reference behavior from the latest `main`, which
+   converts `None` cheaply, not from an obsolete branch that raised
+   exceptions. `tests/test_xml_station_validation.py` compares the
+   validation helper and full XML parsing with fixed synthetic payloads,
+   assertions on result equality and standard-library `timeit.repeat()`:
+
+   ```bash
+   python -m pytest -q -s tests/test_xml_station_validation.py -k timeit
+   ```
+
+6. Report multiple measurements and median time ratios as **diagnostics**.
+   Empty and sparse stations can be much faster, while complete stations
+   may show limited changes; do not promise a fixed speedup in production.
+   Keep timing thresholds out of normal CI.
+7. Rebase onto current `main` with a lease-protected branch update when
+   authorized. Preserve all later parser and security improvements,
+   regression tests, and existing CI checks.

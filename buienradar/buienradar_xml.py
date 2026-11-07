@@ -418,7 +418,7 @@ def __is_valid(loc_data):
         if (key != CONDITION and key != STATIONNAME and key != MEASURED):
             if (func is not None):
                 sens_data = loc_data.get(value)
-                if func(sens_data) != 0:
+                if sens_data is not None and func(sens_data) != 0:
                     return True
 
 
