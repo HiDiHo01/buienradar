@@ -442,6 +442,9 @@ with an authorized, lease-protected single-parent commit.
    skipping the header. A 60-minute workload is **12**, not 24, rows.
    Benchmark `timeframe=120` to exercise a complete two-hour, 24-row
    precipitation payload.
+   For XML end-to-end tests, use **at least two** `<weerstation>` elements:
+   `xmltodict` represents a single station as a dictionary, while the
+   current station selector expects a list of station mappings.
 7. Log median elapsed times and reference/candidate ratios. Do not gate CI
    on timing or claim a fixed speedup without reproducible results in
    representative full weather parsing. Preserve current `main` code,

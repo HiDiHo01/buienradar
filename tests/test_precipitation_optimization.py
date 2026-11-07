@@ -2,10 +2,10 @@
 
 import json
 import logging
+from collections.abc import Callable
 from statistics import median
 import timeit
 from types import ModuleType
-from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -29,12 +29,14 @@ _PARSERS = (
 )
 
 
-def _reference_parser(module: ModuleType) -> Any:
+def _reference_parser(
+    module: ModuleType,
+) -> Callable[[str, int], dict[str, float | int | None]]:
     """Build a baseline with the pre-optimization split and logging behavior."""
     logger = module.log
     mmu_lookup = module._MMU_LOOKUP
 
-    def parse_precipitation(data: str, timeframe: int) -> dict[str, float | int]:
+    def parse_precipitation(data: str, timeframe: int) -> dict[str, float | int | None]:
         """Parse precipitation rows as in main before the PR."""
         result = {AVERAGE: None, TOTAL: None, TIMEFRAME: None}
         logger.debug("Precipitation data: %s", data)
@@ -139,6 +141,12 @@ def _xml_weather_payload() -> str:
               <windrichting>ZW</windrichting>
               <windrichtingGR>225</windrichtingGR>
               <windstotenMS>5</windstotenMS>
+            </weerstation>
+            <weerstation>
+              <stationcode>6240</stationcode>
+              <stationnaam regio="synthetic">Meetstation Secondary</stationnaam>
+              <lat>52.32</lat>
+              <lon>4.79</lon>
             </weerstation>
           </weerstations>
         </actueel_weer>
