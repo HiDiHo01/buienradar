@@ -123,6 +123,8 @@ __DAY = "day"
 
 def __to_upper(val):
     """Convert val into ucase value."""
+    if val is None:
+        return None
     try:
         return val.upper()
     except (AttributeError, ValueError, TypeError):
@@ -131,6 +133,8 @@ def __to_upper(val):
 
 def __to_int(val):
     """Convert val into an integer value."""
+    if val is None:
+        return 0
     try:
         return int(val)
     except (AttributeError, ValueError, TypeError):
@@ -139,10 +143,12 @@ def __to_int(val):
 
 def __to_float(val, digits):
     """Convert val into float with digits decimal."""
+    if val is None:
+        return 0.0
     try:
         return round(float(val), digits)
     except (AttributeError, ValueError, TypeError):
-        return float(0)
+        return 0.0
 
 
 def __to_float2(val):
