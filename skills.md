@@ -499,23 +499,29 @@ Ruff, testing, security and coverage workflows.
 2. Start with Pylint **error/fatal** diagnostics on both the production
    package and the test modules. This adds meaningful analysis without
    introducing unrelated legacy formatting and refactor failures.
-3. The optional CLI-only `docopt` import is not listed in the parser-test
-   requirements. Until that dependency is formally represented, exclude
-   the `import-error` diagnostic, **not** the entire Pylint job. Retain
-   the remaining error/fatal diagnostics as a failure condition.
+3. Review **actual Pylint logs** before scoping exceptions. The optional
+   CLI-only `docopt` import is not in parser-test dependencies, so
+   `import-error` is excluded. The legacy parsers return `dict[str, object]`
+   where `DATA` contains a dictionary on success; Pylint 4.1.3 reports
+   `unsubscriptable-object` and `unsupported-assignment-operation` even
+   after runtime shape assertions. Exclude only these two known inference
+   diagnostics until the result types are refined. Keep all other Pylint
+   error/fatal diagnostics mandatory.
 4. Execute locally with Python 3.14:
 
    ```bash
    python -m pip install -r .github/requirements-ci.txt -r requirements_test.txt
    python -m pip check
-   python -m pylint --errors-only --disable=import-error buienradar test_json_parsing.py tests/
+   python -m pylint --errors-only --disable=import-error,unsubscriptable-object,unsupported-assignment-operation buienradar test_json_parsing.py tests/
    ```
 
 5. Add a dedicated `pylint` job to the unified `.github/workflows/ci.yml`.
    Require that job in `CI result`; preserve Ruff, branch coverage,
    dependency audits, workflow security and all six Python/OS test jobs.
 6. Diagnose failures from the **actual** workflow logs, fix new production
-   defects, and scope any suppression to a substantiated false positive.
+   defects (the initial run caught a real positional call to `get_data()`
+   where `api` is keyword-only), and scope suppressions to demonstrated
+   inference limitations. Test the affected call path to prevent regression.
    Never use `|| true`, `continue-on-error`, or reduce existing quality
    requirements to make the status green.
 7. Check that the new PR remains cleanly rebaseable and mergeable on `main`,
