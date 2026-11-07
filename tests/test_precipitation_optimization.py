@@ -279,3 +279,158 @@ def test_timeit_complete_weather_parser(module: ModuleType) -> None:
         parse_weather, number=90, repeat=_BENCHMARK_REPEATS
     )
     _report_comparison(f"{module.__name__}_full", baseline, candidate, 90)
+
+
+def _current_main_precipitation_parser(
+    module: ModuleType,
+) -> Callable[[str, int], dict[str, float | int | None]]:
+    """Model current main's partition-based parser without the fast-path."""
+    logger = module.log
+    lookup_table = module._MMU_LOOKUP
+
+    def parse_precipitation(data: str, timeframe: int) -> dict[str, float | int | None]:
+        """Process precipitation with main's logger and validation semantics."""
+        result = {AVERAGE: None, TOTAL: None, TIMEFRAME: None}
+        logger.debug("Precipitation data: %s", data)
+        lines = data.splitlines()
+        total_rain = 0.0
+        valid_lines = 0
+        line_count = min(len(lines), round(float(timeframe) / 5) + 1)
+        debug_enabled = logger.isEnabledFor(logging.DEBUG)
+
+        for index in range(1, line_count):
+            line = lines[index]
+            if debug_enabled:
+                logger.debug("__parse_precipfc_data: line: %s", line)
+            value_text, separator, remainder = line.partition("|")
+            if not separator or "|" in remainder:
+                logger.warning("Skipping malformed precipitation line: %r", line)
+                continue
+
+            try:
+                numeric_value = int(value_text)
+                if 0 <= numeric_value <= 255:
+                    intensity = lookup_table[numeric_value]
+                else:
+                    intensity = 10 ** ((numeric_value - 109) / 32)
+            except ValueError:
+                try:
+                    float_value = float(value_text.replace(",", "."))
+                    intensity = 10 ** ((float_value - 109) / 32)
+                except ValueError:
+                    logger.warning(
+                        "Skipping invalid numeric precipitation value: %r", line
+                    )
+                    continue
+
+            total_rain += intensity
+            valid_lines += 1
+
+        result[AVERAGE] = round(total_rain / valid_lines, 2) if valid_lines else 0
+        result[TOTAL] = round(total_rain / 12, 2)
+        result[TIMEFRAME] = timeframe
+        return result
+
+    return parse_precipitation
+
+
+@pytest.mark.parametrize("module", _PARSERS)
+@pytest.mark.parametrize(
+    ("payload", "timeframe"),
+    [
+        pytest.param(_rain_payload(), 120, id="all-24-rows"),
+        pytest.param(_rain_payload(), 60, id="12-rows"),
+        pytest.param(_rain_payload(), 5, id="first-row"),
+        pytest.param("header\\n000|12:00\\n255|12:05\\n", 120, id="integer-bounds"),
+        pytest.param("header\\n256|12:00\\n-1|12:05\\n", 120, id="integer-fallback"),
+        pytest.param("header\\n1,5|12:00\\n12.25|12:05\\n", 120, id="float-fallback"),
+        pytest.param("header\\n077|12:00|bad\\n099|12:05\\n", 120, id="extra-delimiter"),
+        pytest.param("header\\n077\\n099|12:05\\n", 120, id="missing-delimiter"),
+        pytest.param("header\\ninvalid|12:00\\n077|12:05\\n", 120, id="invalid-numeric"),
+        pytest.param("header\\n", 120, id="header-only"),
+        pytest.param("", 120, id="empty"),
+    ],
+)
+def test_current_main_precipitation_fastpath_parity(
+    module: ModuleType, payload: str, timeframe: int
+) -> None:
+    """Match main's exact average, total and timeframe across both parsers."""
+    baseline = _current_main_precipitation_parser(module)
+    expected = baseline(payload, timeframe)
+    actual = module.__parse_precipfc_data(payload, timeframe)
+    assert actual == expected
+    assert set(actual) == {AVERAGE, TOTAL, TIMEFRAME}
+
+
+@pytest.mark.parametrize("module", _PARSERS)
+def test_timeit_current_main_precipitation_fastpath_helper(
+    module: ModuleType,
+) -> None:
+    """Compare the 24-row helper against current main, not legacy split logic."""
+    payload = _rain_payload()
+    baseline = _current_main_precipitation_parser(module)
+    optimized = module.__parse_precipfc_data
+    assert baseline(payload, 120) == optimized(payload, 120)
+
+    repetitions = 800
+    reference_times = timeit.repeat(
+        lambda: baseline(payload, 120),
+        repeat=_BENCHMARK_REPEATS,
+        number=repetitions,
+    )
+    optimized_times = timeit.repeat(
+        lambda: optimized(payload, 120),
+        repeat=_BENCHMARK_REPEATS,
+        number=repetitions,
+    )
+    _report_comparison(
+        f"{module.__name__}_fastpath_helper",
+        reference_times,
+        optimized_times,
+        repetitions,
+    )
+
+
+@pytest.mark.parametrize("module", _PARSERS)
+def test_timeit_current_main_precipitation_fastpath_full(
+    module: ModuleType,
+) -> None:
+    """Benchmark production JSON/XML parsing with just the fast-path changed."""
+    weather_payload = (
+        _json_weather_payload() if module is json_parser else _xml_weather_payload()
+    )
+    rain_payload = _rain_payload()
+    parse = (
+        json_parser.parse_json_data
+        if module is json_parser
+        else xml_parser.parse_xml_data
+    )
+
+    def parse_weather() -> dict[str, object]:
+        """Parse the complete synthetic weather feed without external network."""
+        return parse(weather_payload, rain_payload, 52.09, 5.12, 120)
+
+    baseline_parser = _current_main_precipitation_parser(module)
+    with patch.object(module, "__parse_precipfc_data", baseline_parser):
+        expected = parse_weather()
+        reference_times = timeit.repeat(
+            parse_weather,
+            repeat=_BENCHMARK_REPEATS,
+            number=90,
+        )
+
+    actual = parse_weather()
+    assert actual[SUCCESS] is True
+    assert actual == expected
+    assert actual[DATA][PRECIPITATION_FORECAST][TIMEFRAME] == 120
+    optimized_times = timeit.repeat(
+        parse_weather,
+        repeat=_BENCHMARK_REPEATS,
+        number=90,
+    )
+    _report_comparison(
+        f"{module.__name__}_fastpath_full",
+        reference_times,
+        optimized_times,
+        90,
+    )

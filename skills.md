@@ -526,3 +526,39 @@ Ruff, testing, security and coverage workflows.
    requirements to make the status green.
 7. Check that the new PR remains cleanly rebaseable and mergeable on `main`,
    then confirm the new Pylint job and entire CI pipeline succeed.
+
+## 19. Preserve precipitation parsing contracts during integer fast-paths
+
+**When to use:** Hoisting a precomputed precipitation lookup and avoiding
+redundant accumulation or control flow in JSON/XML forecast parsing.
+
+1. Start from the latest `main` implementation: retain the existing
+   `partition("|")` delimiter check, precomputed DEBUG guard, validation,
+   numeric fallback and weather-data return shape. Do not replace these
+   improvements with an older `split("|")` parser during conflict resolution.
+2. Cache `_MMU_LOOKUP` once per forecast and, for integer codes 0–255,
+   add the looked-up intensity and increment the valid-line count before
+   `continue`. For out-of-range integers, float/comma values and invalid
+   fields, leave the existing fallback and warning paths unchanged.
+3. Avoid `lines[1:nrlines]` unless measured beneficial: slicing creates an
+   additional list. A 120-minute payload contains at most 24 data rows,
+   while a 60-minute payload contains at most 12.
+4. Add JSON/XML parity tests with a **current-main reference** for 0, 255,
+   out-of-range/negative codes, comma-decimals, invalid values, missing
+   and extra delimiters, empty feeds and 5/60/120-minute windows.
+5. Run `tests/test_precipitation_optimization.py` to benchmark both the
+   helper and the full, local `parse_json_data()`/`parse_xml_data()`
+   caller against the identical current-main baseline with
+   `timeit.repeat()`, and assert equivalent output first:
+
+   ```bash
+   python -m pytest -q -s tests/test_precipitation_optimization.py -k timeit
+   ```
+
+6. Use median timings only as diagnostics, never a CI performance gate.
+   Avoid claiming a general 20–25% parser or network speedup solely from
+   small-payload helper measurements. Report the actual runner-specific
+   results and their scope instead.
+7. Keep all existing Ruff, Pylint, security/dependency audits, coverage
+   checks and six-version/platform test jobs; verify both GitHub
+   `mergeable=true` and `rebaseable=true` after the authorized rebase.
