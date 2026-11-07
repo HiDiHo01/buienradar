@@ -223,3 +223,103 @@ def test_timeit_full_xml_weather_parser(complete: bool) -> None:
         candidate_times,
         100,
     )
+
+
+def _current_main_live_xml_validator(station_data: dict[str, object]) -> bool | None:
+    """Model the base commit's live SENSOR_TYPES and None-guard behavior."""
+    for key, (attribute, converter) in xml_parser.SENSOR_TYPES.items():
+        if key not in (CONDITION, STATIONNAME, MEASURED) and converter is not None:
+            value = station_data.get(attribute)
+            if value is not None and converter(value) != 0:
+                return True
+    return None
+
+
+def test_xml_validation_tracks_added_changed_removed_sensor_fields() -> None:
+    """Keep station validation synchronized with dynamically edited descriptors."""
+    mapping = {HUMIDITY: ["luchtvochtigheid", xml_parser.__to_int]}
+    with patch.object(xml_parser, "SENSOR_TYPES", mapping):
+        assert xml_parser.__is_valid({}) is None
+        assert xml_parser.__is_valid({"custom": "17"}) is None
+
+        mapping["synthetic_sensor"] = ["custom", int]
+        assert xml_parser.__is_valid({"custom": "17"}) is True
+
+        mapping["synthetic_sensor"][0] = "replacement"
+        assert xml_parser.__is_valid({"custom": "17"}) is None
+        assert xml_parser.__is_valid({"replacement": "17"}) is True
+
+        mapping["synthetic_sensor"][1] = lambda value: 0
+        assert xml_parser.__is_valid({"replacement": "17"}) is None
+
+        mapping["synthetic_sensor"][1] = int
+        del mapping["synthetic_sensor"]
+        assert xml_parser.__is_valid({"replacement": "17"}) is None
+
+
+def test_xml_full_parser_accepts_updated_sensor_schema() -> None:
+    """Accept a weather station whose only nonzero value uses a changed field."""
+    feed = _xml_weather_feed(False).replace(
+        "<temperatuurGC>15.4</temperatuurGC>",
+        "<maatwerk>15.4</maatwerk>",
+    )
+    modified_mapping = {
+        TEMPERATURE: ["maatwerk", xml_parser.__to_float1],
+    }
+    with patch.object(xml_parser, "SENSOR_TYPES", modified_mapping):
+        baseline = xml_parser.parse_xml_data(feed, None, 52.09, 5.12)
+        assert baseline[SUCCESS] is True
+        assert baseline[DATA][TEMPERATURE] == 15.4
+        assert xml_parser.__is_valid({"maatwerk": "15.4"}) is True
+
+
+@pytest.mark.parametrize("complete", [False, True], ids=["sparse", "complete"])
+def test_timeit_live_xml_schema_helper(complete: bool) -> None:
+    """Benchmark current-main validation and the live optimized predicate."""
+    values = _station_values(complete)
+    baseline = _current_main_live_xml_validator
+    candidate = xml_parser.__is_valid
+    assert baseline(values) is candidate(values)
+
+    samples = timeit.repeat(
+        lambda: baseline(values), repeat=_TIMEIT_REPEATS, number=5_000
+    )
+    measurements = timeit.repeat(
+        lambda: candidate(values), repeat=_TIMEIT_REPEATS, number=5_000
+    )
+    _report_timings(
+        f"live_schema_helper_{'complete' if complete else 'sparse'}",
+        samples,
+        measurements,
+        5_000,
+    )
+
+
+@pytest.mark.parametrize("complete", [False, True], ids=["sparse", "complete"])
+def test_timeit_live_xml_schema_full_parser(complete: bool) -> None:
+    """Compare complete XML parsing against the actual live-mapping baseline."""
+    feed = _xml_weather_feed(complete)
+
+    def parse_weather() -> dict[str, object]:
+        """Parse an identical two-station XML fixture without network access."""
+        return xml_parser.parse_xml_data(feed, None, 52.09, 5.12)
+
+    with patch.object(xml_parser, "__is_valid", _current_main_live_xml_validator):
+        baseline = parse_weather()
+        sample_times = timeit.repeat(
+            parse_weather, repeat=_TIMEIT_REPEATS, number=100
+        )
+
+    result = parse_weather()
+    assert baseline == result
+    assert result[SUCCESS] is True
+
+    candidate_times = timeit.repeat(
+        parse_weather, repeat=_TIMEIT_REPEATS, number=100
+    )
+    _report_timings(
+        f"live_schema_full_{'complete' if complete else 'sparse'}",
+        sample_times,
+        candidate_times,
+        100,
+    )
