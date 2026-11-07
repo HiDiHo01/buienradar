@@ -25,3 +25,22 @@
 ## 2026-10-22 - Caching Exclusion Keys While Preserving Live Mapping Iteration
 **Learning:** Pre-caching static `(value, func)` pairs from `SENSOR_TYPES` at import time prevents runtime modification or dynamic monkeypatching of `SENSOR_TYPES`. However, iterating the live mapping with cached exclusion keys (`_EXCLUDED_VALIDATION_KEYS = frozenset(...)`) keeps the validation loop fast while guaranteeing that dynamic changes to `SENSOR_TYPES` are respected.
 **Action:** When optimizing loops over configurable mappings, cache static exclusion sets (`frozenset`) rather than caching mapping entries to prevent stale descriptor issues when mappings are modified at runtime.
+
+## 2026-11-07 - Forecast invariants are not mutable station descriptors
+
+**Learning:** `SENSOR_TYPES` is a mutable registry that both XML validation
+and `__parse_loc_data()` must consult at runtime. Precomputing
+`tuple(SENSOR_TYPES.items())` at import time is unsafe: additions and
+replacement descriptors can be silently omitted from the parsed result.
+In contrast, the five XML forecast section names and day offsets have a
+fixed definition; caching their tuple and reusing a parsed maximum
+temperature safely avoids repeat work. Keep the `condition_from_code`
+import within the XML parser function because of the existing circular
+import between `buienradar.py` and `buienradar_xml.py`.
+
+**Action:** Only cache truly immutable values, preserve the live sensor
+mapping, and compare the original and optimized five-day forecast helper
+**and** complete `parse_xml_data()` output using identical deterministic
+fixtures and `timeit.repeat()`. Report actual runner-specific timing;
+earlier 1.35x helper / 1.22x complete-feed speedup claims have not been
+established against the current main branch. Never use timing as a CI gate.

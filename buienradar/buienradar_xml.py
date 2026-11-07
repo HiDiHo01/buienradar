@@ -186,6 +186,13 @@ SENSOR_TYPES = {
     WINDGUST: ['windstotenMS', __to_float2],
 }
 
+# Forecast day names and day offsets are immutable. Unlike SENSOR_TYPES,
+# caching these values cannot desynchronize station validation and parsing.
+_DAY_SECTIONS_AND_DELTAS = tuple(
+    (__BRDAYFC % day_index, timedelta(days=day_index))
+    for day_index in range(1, 6)
+)
+
 log = logging.getLogger(__name__)
 
 
@@ -466,18 +473,18 @@ def __parse_fc_data(fc_data):
                                                   minute=0,
                                                   second=0,
                                                   microsecond=0)
-    for daycnt in range(1, 6):
-        daysection = __BRDAYFC % daycnt
+    for daysection, daydelta in _DAY_SECTIONS_AND_DELTAS:
         if daysection in fc_data:
             tmpsect = fc_data[daysection]
-            # add daycnt days
-            fcdatetime = base_dt + timedelta(days=daycnt)
+            fcdatetime = base_dt + daydelta
             code = tmpsect.get(__BRICOON, []).get(__BRID).lower()
+            condition = condition_from_code(code)
+            max_temp = __get_float(tmpsect, __BRMAXTEMP)
             fcdata = {
-                CONDITION: condition_from_code(code),
-                TEMPERATURE: __get_float(tmpsect, __BRMAXTEMP),
+                CONDITION: condition,
+                TEMPERATURE: max_temp,
                 MIN_TEMP: __get_float(tmpsect, __BRMINTEMP),
-                MAX_TEMP: __get_float(tmpsect, __BRMAXTEMP),
+                MAX_TEMP: max_temp,
                 SUN_CHANCE: __get_int(tmpsect, __BRKANSZON),
                 RAIN_CHANCE: __get_int(tmpsect, __BRKANSREGEN),
                 RAIN: __get_float(tmpsect, __BRMAXMMREGEN),
