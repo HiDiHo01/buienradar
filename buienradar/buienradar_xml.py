@@ -186,6 +186,15 @@ SENSOR_TYPES = {
     WINDGUST: ['windstotenMS', __to_float2],
 }
 
+# Performance optimization: precompute validation sensors (non-null conversion funcs,
+# excluding CONDITION, STATIONNAME, and MEASURED) to avoid branch checks and dictionary
+# items unpacking per station check.
+_VALIDATION_SENSORS = tuple(
+    (value, func)
+    for key, (value, func) in SENSOR_TYPES.items()
+    if key not in (CONDITION, STATIONNAME, MEASURED) and func is not None
+)
+  
 # Performance optimization: pre-compute day section keys and day timedeltas
 # for fast iteration in __parse_fc_data without per-call string formatting and allocations.
 _DAY_SECTIONS_AND_DELTAS = tuple(
@@ -413,12 +422,15 @@ def __parse_precipfc_data(data, timeframe) -> dict[str, object]:
 
 def __is_valid(loc_data):
     """Determine if this can be valid data (not all 0's)."""
-    for key, [value, func] in SENSOR_TYPES.items():
-        if (key != CONDITION and key != STATIONNAME and key != MEASURED):
-            if (func is not None):
-                sens_data = loc_data.get(value)
-                if func(sens_data) != 0:
-                    return True
+    # Performance optimization: iterate over precomputed _VALIDATION_SENSORS tuple
+    # to avoid per-item key exclusion, null-function checks, and exception overhead
+    # from passing None into conversion functions.
+    for value, func in _VALIDATION_SENSORS:
+        sens_data = loc_data.get(value)
+        if sens_data is not None:
+            val = func(sens_data)
+            if val is not None and val != 0 and val != "":
+                return True
 
 
 def __parse_loc_data(loc_data, result):
