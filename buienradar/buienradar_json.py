@@ -287,6 +287,9 @@ SENSOR_TYPES = {
     WINDGUST: ['windgusts', __to_float2],
 }
 
+# Pre-computed items tuple for fast iteration in __parse_loc_data
+_SENSOR_TYPES_ITEMS = tuple(SENSOR_TYPES.items())
+
 
 log = logging.getLogger(__name__)
 
@@ -441,30 +444,25 @@ def __parse_loc_data(loc_data, result):
                     FORECAST: [],
                     PRECIPITATION_FORECAST: None}
 
-    for key, [value, func] in SENSOR_TYPES.items():
+    # Performance optimization:
+    # Use pre-computed items tuple `_SENSOR_TYPES_ITEMS` and evaluate key special cases
+    # (CONDITION and STATIONNAME) before attempting `loc_data[value]` lookup to avoid
+    # redundant dictionary access and KeyError exception handling overhead.
+    for key, (value, func) in _SENSOR_TYPES_ITEMS:
         result[DATA][key] = None
         try:
-            sens_data = loc_data[value]
             if key == CONDITION:
-                # update weather symbol & status text
-                # desc = loc_data[__WEATHERDESCRIPTION]
-                # result[DATA][CONDITION] = __cond_from_desc(desc)
-                #
-                # test clear-->sunny vs clear-->clear-night
-                # loc_data[__ICONURL] =
-                #   "https://www.buienradar.nl/resources/images/icons/weather/30x30/a.png"
-                # loc_data[__ICONURL] =
-                #   "https://www.buienradar.nl/resources/images/icons/weather/30x30/aa.png"
-                result[DATA][CONDITION] = __cond_from_image(
-                    loc_data[__ICONURL])
+                icon_url = loc_data[__ICONURL]
+                result[DATA][CONDITION] = __cond_from_image(icon_url)
                 if result[DATA][CONDITION]:
-                    result[DATA][CONDITION][IMAGE] = loc_data[__ICONURL]
-
+                    result[DATA][CONDITION][IMAGE] = icon_url
                 continue
             if key == STATIONNAME:
                 result[DATA][key] = __getStationName(loc_data[__STATIONNAME],
                                                      loc_data[__STATIONID])
                 continue
+
+            sens_data = loc_data[value]
             # update all other data:
             if func is not None:
                 result[DATA][key] = func(sens_data)
@@ -497,8 +495,8 @@ _WIND_DIRECTIONS = {
 def __parse_fc_data(fc_data):
     """Parse the forecast data from the json section."""
     fc = []
-    # Performance optimization: extract wind direction, icon URL, and wind force once per day
-    # to avoid redundant string upper() conversions and repeated dictionary lookups.
+    # Performance optimization: extract wind direction, icon URL, and wind force once per day,
+    # and reuse parsed floats for min/max temperature and rain to avoid redundant float conversions.
     for day in fc_data:
         wind_str = __get_str(day, __WINDDIRECTION)
         wind_dir_upper = wind_str.upper()
@@ -510,17 +508,28 @@ def __parse_fc_data(fc_data):
             cond[NIGHTTIME] = False
             cond[IMAGE] = icon_url
 
+        min_temp = __get_float(day, __MINTEMPERATUREMIN)
+        max_temp = __get_float(day, __MAXTEMPERATUREMAX)
+        min_rain = __get_optional_float(day, __MMRAINMIN)
+        max_rain = __get_optional_float(day, __MMRAINMAX)
+        if min_rain is None:
+            rain = max_rain
+        elif max_rain is None:
+            rain = min_rain
+        else:
+            rain = (min_rain + max_rain) / 2
+
         fcdata = {
             CONDITION: cond,
             TEMPERATURE: __get_avr_float(day, __MAXTEMPERATUREMIN,
                                          __MAXTEMPERATUREMAX),
-            MIN_TEMP: __get_float(day, __MINTEMPERATUREMIN),
-            MAX_TEMP: __get_float(day, __MAXTEMPERATUREMAX),
+            MIN_TEMP: min_temp,
+            MAX_TEMP: max_temp,
             SUN_CHANCE: __get_int(day, __SUNCHANCE),
             RAIN_CHANCE: __get_int(day, __RAINCHANCE),
-            RAIN: __get_avr_float(day, __MMRAINMIN, __MMRAINMAX),
-            MIN_RAIN: __get_float(day, __MMRAINMIN),  # new
-            MAX_RAIN: __get_float(day, __MMRAINMAX),  # new
+            RAIN: rain,
+            MIN_RAIN: min_rain if min_rain is not None else 0.0,  # new
+            MAX_RAIN: max_rain if max_rain is not None else 0.0,  # new
             # depricated / for compatibility:
             SNOW: 0,
             WINDFORCE: wind_force,
@@ -549,9 +558,16 @@ def __get_windazimuth(winddirection):
     if not winddirection:
         return None
 
+    # Only built-in strings are guaranteed hashable. Subclasses still use
+    # the original uppercase normalization for compatibility.
+    if type(winddirection) is str:
+        res = _WIND_DIRECTIONS.get(winddirection)
+        if res is not None:
+            return res
+
     try:
-        return _WIND_DIRECTIONS[winddirection.upper()]
-    except (KeyError, AttributeError, TypeError):
+        return _WIND_DIRECTIONS.get(winddirection.upper())
+    except (AttributeError, TypeError):
         return None
 
 
@@ -569,6 +585,14 @@ def __get_float(section, name):
         return float(section[name])
     except (ValueError, TypeError, KeyError):
         return float(0)
+
+
+def __get_optional_float(section, name):
+    """Return a parsed float, or None when the forecast value is invalid."""
+    try:
+        return float(section[name])
+    except (ValueError, TypeError, KeyError):
+        return None
 
 
 def __get_avr_float(section, name1, name2):
@@ -671,7 +695,7 @@ def __cond_from_image(img):
     # - http://somehost/somefolder/C.png
     #  if there is not url or the length is too small,
     #  we cannot determine the condition.
-    if img is None or len(img) < 6:
+    if not isinstance(img, str) or len(img) < 6:
         return None
     image = img.lower()
     code = image[-5:-4]

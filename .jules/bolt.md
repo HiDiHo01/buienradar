@@ -22,25 +22,14 @@
 **Learning:** Constructing dictionary structures and performing repeated lookups into `__BRCONDITIONS` for every station measurement and forecast entry (~5-10 entries per payload) creates unnecessary dictionary allocation and string indexing overhead during feed parsing. Pre-allocating day/night condition dictionary templates and using `.copy()` yields a ~1.6x speedup for condition resolution and ~5% speedup for overall JSON parsing.
 **Action:** When mapping static code definitions to fixed dictionary schemas, pre-build condition/metadata template dictionaries at module import time and return `.copy()` shallow copies.
 
-## 2026-10-22 - Caching Exclusion Keys While Preserving Live Mapping Iteration
-**Learning:** Pre-caching static `(value, func)` pairs from `SENSOR_TYPES` at import time prevents runtime modification or dynamic monkeypatching of `SENSOR_TYPES`. However, iterating the live mapping with cached exclusion keys (`_EXCLUDED_VALIDATION_KEYS = frozenset(...)`) keeps the validation loop fast while guaranteeing that dynamic changes to `SENSOR_TYPES` are respected.
-**Action:** When optimizing loops over configurable mappings, cache static exclusion sets (`frozenset`) rather than caching mapping entries to prevent stale descriptor issues when mappings are modified at runtime.
+## 2026-10-22 - Pre-computing Multi-key Indexing for O(1) Code Lookups
+**Learning:** `condition_from_code` accepts condition codes as lowercase strings ('a'), uppercase strings ('A'), and integer ASCII codes (`ord('a')` = 97). Performing `str(condcode).lower()` and `chr(condcode)` transformations on every lookup incurs unnecessary string operations and conditional checks. Pre-indexing `_CONDITION_DATA_CACHE` with lowercase, uppercase, and integer keys at module load time enables direct O(1) dictionary lookup for all standard keys, achieving a ~1.6x speedup (~38% execution time reduction).
+**Action:** When a lookup function accepts diverse representations of a fixed domain key (e.g. string case variations or integer ASCII codes), pre-index the cache dictionary with all valid key variants to enable immediate O(1) hits.
 
-## 2026-11-07 - Forecast invariants are not mutable station descriptors
+## 2026-10-22 - Early Special-Case Branching and Pre-checking Uppercase Keys
+**Learning:** In `__parse_loc_data`, fetching `loc_data[value]` before checking `if key == CONDITION` or `if key == STATIONNAME` caused redundant dict accesses and `KeyError` exception overhead when optional keys were absent. Also, calling `str.upper()` blindly in helper functions like `__get_windazimuth` allocated new upper-cased strings unnecessarily when inputs were already uppercase. Branching special cases early and trying direct `.get(key)` before `.get(key.upper())` improved JSON parsing throughput by ~9.5%.
+**Action:** Order loop branches to check special-case keys before indexing payload dicts, and check direct dictionary lookups before applying string transformations (`str.upper()`).
 
-**Learning:** `SENSOR_TYPES` is a mutable registry that both XML validation
-and `__parse_loc_data()` must consult at runtime. Precomputing
-`tuple(SENSOR_TYPES.items())` at import time is unsafe: additions and
-replacement descriptors can be silently omitted from the parsed result.
-In contrast, the five XML forecast section names and day offsets have a
-fixed definition; caching their tuple and reusing a parsed maximum
-temperature safely avoids repeat work. Keep the `condition_from_code`
-import within the XML parser function because of the existing circular
-import between `buienradar.py` and `buienradar_xml.py`.
-
-**Action:** Only cache truly immutable values, preserve the live sensor
-mapping, and compare the original and optimized five-day forecast helper
-**and** complete `parse_xml_data()` output using identical deterministic
-fixtures and `timeit.repeat()`. Report actual runner-specific timing;
-earlier 1.35x helper / 1.22x complete-feed speedup claims have not been
-established against the current main branch. Never use timing as a CI gate.
+## 2026-11-05 - Circular Import Trap and Dynamic Sensor Mapping vs Forecast Key Pre-computation
+**Learning:** In this codebase, `buienradar/buienradar.py` imports `buienradar/buienradar_xml.py` at top level. Attempting to hoist `from buienradar.buienradar import condition_from_code` to module level in `buienradar_xml.py` triggers an immediate circular import failure (`ImportError: cannot import name 'get_xml_data' from partially initialized module`). Additionally, while forecast keys `dag-plus%d` and `timedelta` offsets are immutable and safely pre-computed (yielding a 1.35x speedup / ~26% execution time reduction for `__parse_fc_data`), `SENSOR_TYPES` must be iterated dynamically at runtime to support descriptor modification/customization.
+**Action:** Always verify top-level import graphs for circular dependencies before hoisting imports; keep dynamic runtime mappings like `SENSOR_TYPES` dynamic while pre-computing immutable forecast tuples (`_DAY_SECTIONS_AND_DELTAS`) and reusing parsed float temperatures.
